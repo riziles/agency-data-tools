@@ -123,21 +123,21 @@ All of them read Parquet via HTTP range requests, meaning they download only the
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    INGESTION PIPELINE                        │
+│                    INGESTION PIPELINE                       │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  Fannie Mae CSV.zip ──► GitHub Actions / Cheap VPS ──► R2  │
-│       (multi-GB)         (convert to Parquet)   Parquet    │
+│  Fannie Mae CSV.zip ──► GitHub Actions / Cheap VPS ──► R2   │
+│       (multi-GB)         (convert to Parquet)   Parquet     │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    QUERY LAYER                               │
+│                    QUERY LAYER                              │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  Browser / CLI ──► DataFusion WASM ── HTTP range reqs ──► R2│
-│  (your machine)      (free compute)      ($0 egress)       │
+│  (your machine)      (free compute)      ($0 egress)        │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
