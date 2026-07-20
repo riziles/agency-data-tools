@@ -105,7 +105,7 @@ LIMIT 10</textarea>
           columns: MDL_COLS.map(c => {
             const t = c.includes("_score") || c.includes("_term") || c.includes("_age") || c === "dti"
               || c.includes("_ltv") || c.includes("_cltv") || c.includes("_units") || c.includes("_borrowers") ? "INTEGER"
-              : c.includes("_upb") || c.includes("_rate") || c.includes("_percentage") ? "DOUBLE"
+              : c.includes("_upb") || c.includes("_rate") ? "DOUBLE"
               : "VARCHAR";
             return { name: c, type: t };
           }),
