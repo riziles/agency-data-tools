@@ -9,11 +9,26 @@
 
 ## Project
 
-Fannie Mae loan performance data ingestion pipeline:
+Fannie Mae loan performance data ingestion and analytics pipeline:
 - **Fetch**: OAuth2 → Fannie Mae API → signed S3 URL → ZIP download
 - **Convert**: CSV (pipe-delimited, no headers, 108 CRT data fields) → Parquet
 - **Store**: Cloudflare R2 (bucket: `fannie-mae-poc`)
-- **Query**: DuckDB WASM or DataFusion WASM (planned)
+- **Query**: Browser-based DataFusion WASM app (wren-core-wasm)
+- **Deploy**: GitHub Pages via Actions (`.github/workflows/deploy.yml`)
+- **Live site**: https://riziles.github.io/agency-data-tools/
+
+## Query Layer
+
+- **`query/`** — Browser-based DataFusion WASM query app
+  - `query/index.html` — Self-contained app (dark theme, SQL editor, results table, progress bar)
+  - `query/server.cjs` — Node.js dev server with CORS + COOP/COEP headers (run locally: `node query/server.cjs`)
+  - **Inline mode**: Downloads 38.8 MB Parquet from R2 on load (~7s), then queries are instant (<1s)
+  - Imports `@wrenai/wren-core-wasm` from CDN (DataFusion WASM via wren-core)
+  - 28 useful columns exposed in MDL (loan_id, credit scores, UPB, interest rates, LTV, DTI, property state, etc.)
+  - **URL mode is broken** — `ListingTable` parallel scans trigger `condvar wait not supported` crash in WASM
+  - **Fix branch**: `/home/seanan/Documents/repos/wrenai-wasm-fix-fork-maybe` on `fix/wren-core-wasm-condvar-url-mode`
+    - Adds `datafusion.execution.parquet.maximum_parallel_row_groups = 1` to `WrenEngine::new()`
+    - See `core/wren-core-wasm/FIX_CONDVAR_URL_MODE.md` in that repo for details
 
 ## ⚠️ Critical: Do NOT Re-download Data
 
@@ -22,10 +37,7 @@ Fannie Mae loan performance data ingestion pipeline:
 - The ingestion tool caches to `fannie_{year}_{quarter}.zip` and `fannie_{year}_{quarter}.csv` in the project root
 - The tool checks for cached files before downloading — if the CSV already exists, it skips the entire fetch
 - These cache files are gitignored (`*.zip`, `*.csv` in `.gitignore`)
-- When testing schema/parsing changes, use the `--local-csv` flag to feed an already-extracted CSV:
-  ```bash
-  ./ingest/target/debug/fannie-ingest --local-csv fannie_2024_Q1.csv --output test-data/2024Q1.parquet
-  ```
+- When testing schema/parsing changes, use the `--local-csv` flag to feed an already-extracted CSV
 - The test data file `test-data/sample.csv` (5 rows) is safe for rapid iteration
 - Each signed S3 URL is valid for ~1 hour
 
@@ -41,24 +53,6 @@ API accepts:    Accept: application/json
 
 This was the original bug that blocked the pipeline for a long time. The Python reference client from Fannie Mae's own repo confirms this endpoint.
 
-## Schema (113 Columns)
-
-The CSV is pipe-delimited with NO header row. The schema has 113 fields:
-
-| Range | Count | Description |
-|-------|-------|-------------|
-| Field 1 | 1 | Leading empty (artifact of `|` delimiter at line start) |
-| Fields 2–109 | 108 | Data fields per CRT File Layout (PDF positions 2–108 for SF data) |
-| Field 110 | 1 | Extra field (value "7" in 2024 Q1 data — not in June 2023 PDF) |
-| Fields 110–113 | 4 | Trailing empty (artifact of trailing pipes) |
-
-**Field type notes:**
-- Most numeric columns are `Float64` (not `Int32`) because empty values cause parse errors with `Int32`
-- Coded indicator columns (e.g., `first_time_home_buyer_indicator`) contain values like "Y", "N", "7", "9" — not booleans
-- Credit scores are `Int32` and CAN be empty (single-borrower loans have no co-borrower score)
-
-**Reference:** [CRT File Layout and Glossary PDF](http://capitalmarkets.fanniemae.com/sites/capmrkt/files/2023-06/crt-file-layout-and-glossary.pdf) (108 positions; note position 1 "Reference Pool ID" is NA for SF data)
-
 ## R2 Upload
 
 - **Use wrangler, not the Rust S3 API.** The direct S3 endpoint (`account-id.r2.cloudflarestorage.com`) may have connectivity issues. Wrangler's API-based upload works reliably:
@@ -67,17 +61,7 @@ The CSV is pipe-delimited with NO header row. The schema has 113 fields:
   ```
 - The `--r2-bucket` flag on the ingest tool is available but may time out depending on network conditions
 - Bucket: `fannie-mae-poc`
-
-## Query Layer
-
-- **`query/`** — Browser-based DataFusion WASM query app
-  - `index.html` — Self-contained app (dark theme, SQL editor, result table)
-  - `server.cjs` — Tiny Node.js dev server with CORS
-  - Imports `@wrenai/wren-core-wasm` from CDN (DataFusion WASM)
-  - WASM binary (`wren_core_wasm_bg.wasm`, 69 MB) served locally from the project
-  - Inline mode: downloads Parquet once, queries in memory
-  - `datafusion-wasm-bundler@0.3.3` is **broken** for Parquet (overflow bug in parquet-54.2.0)
-  - Run: `node query/server.cjs`, open http://localhost:8765
+- Public dev URL: `https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev`
 
 ## Build & Run
 
@@ -91,10 +75,12 @@ cd ingest && cargo build
 # Convert local CSV (use when iterating on schema)
 ./ingest/target/debug/fannie-ingest --local-csv fannie_2024_Q1.csv --output test-data/2024Q1.parquet
 
-# Upload to R2 (needs R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY in .env)
-./ingest/target/debug/fannie-ingest --year 2024 --quarter Q1 \
-  --output test-data/2024Q1.parquet \
-  --r2-bucket fannie-mae-poc --r2-key 2024/Q1/loans.parquet
+# Upload to R2
+pnpm wrangler r2 object put fannie-mae-poc/2024/Q1/loans.parquet --file test-data/2024Q1.parquet
+
+# Run query app locally
+node query/server.cjs
+# Open http://localhost:8765
 ```
 
 ## Environment
@@ -109,8 +95,11 @@ cd ingest && cargo build
 |------|---------|
 | `ingest/src/main.rs` | Full pipeline: schema, API auth, ZIP extract, CSV→Parquet, R2 upload |
 | `ingest/Cargo.toml` | Rust deps: datafusion, reqwest, object_store, zip, clap |
+| `query/index.html` | Browser query app (DataFusion WASM, dark theme) |
+| `query/server.cjs` | Dev server (Node.js, CORS + COOP/COEP) |
 | `test-data/sample.csv` | 5-row test file (safe for rapid iteration) |
 | `ARCHITECTURE.md` | Architecture analysis (R2 costs, compute options, query layer comparison) |
+| `.github/workflows/deploy.yml` | GH Pages deploy action |
 
 ## Fannie Mae API
 
@@ -135,4 +124,17 @@ cd ingest && cargo build
 - Download ~10s, CSV extraction ~15s, Parquet conversion ~90s (debug build)
 - Full dataset is hundreds of GB — each quarter is ~1-1.5 GB uncompressed CSV
 - The 1.28 GB CSV stays on disk (not loaded entirely into memory) — DataFusion streams it
-- Debug builds are slower; `--release` builds will be significantly faster for large batches
+- Query app: ~7s initial R2 download + parquet parse, then <1s per query
+
+## Schema (113 Columns)
+
+The CSV is pipe-delimited with NO header row. The schema has 113 fields:
+
+| Range | Count | Description |
+|-------|-------|-------------|
+| Field 1 | 1 | Leading empty (artifact of `|` delimiter at line start) |
+| Fields 2–109 | 108 | Data fields per CRT File Layout (PDF positions 2–108 for SF data) |
+| Field 110 | 1 | Extra field (value "7" in 2024 Q1 data — not in June 2023 PDF) |
+| Fields 110–113 | 4 | Trailing empty (artifact of trailing pipes) |
+
+**Reference:** [CRT File Layout and Glossary PDF](http://capitalmarkets.fanniemae.com/sites/capmrkt/files/2023-06/crt-file-layout-and-glossary.pdf)
