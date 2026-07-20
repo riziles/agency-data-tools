@@ -1,5 +1,12 @@
 # AGENTS.md — Notes for AI Coding Agents
 
+## ⚠️ Secrets
+
+- **Do NOT read secrets files into the chat.** Use `dotenvy` in Rust or source `.env` in bash to access credentials without exposing them.
+- `.env` and `secrets/` contain real Fannie Mae API credentials — never display, log, or commit these values
+- If you need to test an API call, use `source .env && curl ... -u "${FANNIE_CLIENT_ID}:${FANNIE_CLIENT_SECRET}"` — the env vars stay in the shell, not the chat
+- The `scripts/setup-env.sh` script reads `secrets/datadynamics.yaml` and writes `.env` — use that instead of manually copying secrets
+
 ## Project
 
 Fannie Mae loan performance data ingestion pipeline:
