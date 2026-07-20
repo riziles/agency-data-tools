@@ -4,29 +4,29 @@ Fannie Mae loan performance data ingestion and analytics pipeline.
 
 ## Status
 
-**POC phase** — Core pipeline works end-to-end with test data. Fannie Mae API auth is confirmed working (PingOne OAuth2), but the API call itself returns 401. The app is subscribed to the correct API product (`SingleFamilyLphExchangeAPI`) in the developer portal, but the exact auth header or scoping needs further investigation.
+**Pipeline working end-to-end** 🎉 — Fetches real data from Fannie Mae API, extracts ZIP, converts CSV → Parquet. 2024 Q1 = 4M rows, 1.28 GB CSV → 39 MB Parquet (33:1 compression).
 
 ### What Works
 - ✅ Cloudflare R2 bucket `fannie-mae-poc` created
 - ✅ Rust ingestion tool compiles (DataFusion CSV→Parquet conversion)
 - ✅ CSV→Parquet on test data works (pipe-delimited, no headers)
 - ✅ Wrangler CLI authenticated to Cloudflare
-- ✅ PingOne token endpoint works — returns valid OAuth2 access token
-- ✅ App `datafusion01` registered in Fannie Mae developer portal
-- ✅ App subscribed to `SingleFamilyLphExchangeAPI` product
+- ✅ Fannie Mae API auth: `auth.pingone.com` → `x-public-access-token` header → 200 OK
+- ✅ Full pipeline: API → signed S3 URL → ZIP download → CSV extract → Parquet
+- ✅ 2024 Q1: 3,989,404 rows, 94 MB ZIP → 39 MB Parquet
 - ✅ Cloudflare skills installed (`.pi/skills/`)
 - ✅ Git repo pushed to GitHub
 
-### What's Blocked
-- ❌ Fannie Mae API returns 401 for all tested auth headers (`x-public-access-token`, `Authorization: Bearer`, `x-api-key`, Basic auth) even with valid PingOne token
-- ❌ Token endpoint `fmsso-prod.fanniemae.com` (used by Coda pack) does not resolve from this network
-- ❌ Apigee OAuth token endpoints return 403
+### Resolved Auth Issue
+- The bug: code was hitting `fmsso-prod.fanniemae.com` for tokens (doesn't resolve)
+- The fix: use `auth.pingone.com/4c2b23f9-52b1-4f8f-aa1f-1d477590770c/as/token` (matches Fannie Mae's own Python reference client)
+- Auth header: `x-public-access-token: {token}` (not `Authorization: Bearer`)
 
-### Next Steps
-- Investigate correct auth mechanism for `SingleFamilyLphExchangeAPI` at `api.fanniemae.com`
-- Check if app needs additional scopes or audience claims in the PingOne token
-- Try using the developer portal's "Try It" feature to see the exact auth headers used
-- Once API works: download sample data, convert to Parquet, upload to R2
+### To Do
+- Upload Parquet files to R2
+- Build query layer (DuckDB WASM or DataFusion WASM)
+- Fetch additional quarters/years
+- Add SQLite/DataFusion query endpoint
 
 ## Project Structure
 

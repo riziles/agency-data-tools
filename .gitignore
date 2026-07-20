@@ -28,3 +28,10 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Downloaded data & cache (large files)
+*.zip
+*.csv
+!test-data/*.csv
+*.parquet
+!test-data/sample.parquet
