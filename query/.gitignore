@@ -1,0 +1,5 @@
+wren_core_wasm_bg.wasm
+demo.parquet
+node_modules/
+dist/
+*.log

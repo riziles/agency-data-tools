@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fannie Mae Loan Data — DataFusion WASM</title>
+    <style>
+      :root { --bg: #1a1a2e; --surface: #16213e; --primary: #e94560; --text: #eaeaea; --muted: #888; --border: #333; --success: #4caf50; --error: #f44336; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+      header { background: var(--surface); padding: 1.5rem 2rem; border-bottom: 2px solid var(--primary); }
+      header h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+      .subtitle { color: var(--muted); font-size: 0.9rem; }
+      main { max-width: 100%; padding: 1rem; }
+      .query-panel { background: var(--surface); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+      #sql-input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; font-family: monospace; font-size: 0.9rem; resize: vertical; }
+      #sql-input:focus { outline: none; border-color: var(--primary); }
+      .query-actions { display: flex; align-items: center; gap: 1rem; margin-top: 0.75rem; }
+      #run-btn { background: var(--primary); color: white; border: none; border-radius: 6px; padding: 0.5rem 1.5rem; font-size: 0.9rem; cursor: pointer; }
+      #run-btn:hover { opacity: 0.85; }
+      #run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .hint { color: var(--muted); font-size: 0.8rem; }
+      .status { margin-left: auto; font-size: 0.8rem; }
+      .status.success { color: var(--success); } .status.error { color: var(--error); } .status.loading { color: var(--muted); }
+      .results { background: var(--surface); border-radius: 8px; padding: 1rem; overflow-x: auto; }
+      .loading-panel { text-align: center; padding: 3rem; color: var(--muted); }
+      .hidden { display: none; }
+      .error { color: var(--error); padding: 1rem; border: 1px solid var(--error); border-radius: 6px; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; }
+      #result-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+      #result-table th { background: var(--bg); color: var(--primary); padding: 0.5rem 0.75rem; text-align: left; white-space: nowrap; position: sticky; top: 0; }
+      #result-table td { padding: 0.35rem 0.75rem; border-bottom: 1px solid var(--border); white-space: nowrap; max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
+      #result-table tr:hover td { background: rgba(233, 69, 96, 0.08); }
+      #row-count { color: var(--muted); font-size: 0.8rem; margin-top: 0.5rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Fannie Mae Loan Performance Data</h1>
+      <p class="subtitle">2024 Q1 — 4M loans — Powered by DataFusion WASM (wren-core)</p>
+    </header>
+    <main>
+      <section class="query-panel">
+        <textarea id="sql-input" rows="4">SELECT * FROM "Loans" LIMIT 5</textarea>
+        <div class="query-actions">
+          <button id="run-btn" disabled>Run Query</button>
+          <span class="hint">Ctrl+Enter to run</span>
+          <span id="status" class="status"></span>
+        </div>
+      </section>
+      <section class="results">
+        <div id="loading" class="loading-panel">
+          <p>Loading DataFusion WASM engine...</p>
+        </div>
+        <div id="error" class="error hidden"></div>
+        <div id="result-table-wrapper" class="hidden">
+          <table id="result-table"></table>
+          <p id="row-count"></p>
+        </div>
+      </section>
+    </main>
+
+    <script type="module">
+      import { WrenEngine } from "https://unpkg.com/@wrenai/wren-core-wasm@0.4.1/dist/index.js";
+
+      const sqlInput = document.getElementById("sql-input");
+      const runBtn = document.getElementById("run-btn");
+      const status = document.getElementById("status");
+      const errorDiv = document.getElementById("error");
+      const loadingDiv = document.getElementById("loading");
+      const tableWrapper = document.getElementById("result-table-wrapper");
+      const resultTable = document.getElementById("result-table");
+      const rowCount = document.getElementById("row-count");
+
+      let engine = null;
+
+      const MDL = {
+        catalog: "wren",
+        schema: "public",
+        models: [{
+          name: "Loans",
+          tableReference: { table: "loans" },
+          columns: [
+            { name: "loan_id", type: "VARCHAR" },
+            { name: "period", type: "VARCHAR" },
+            { name: "state", type: "VARCHAR" },
+            { name: "credit_score", type: "INTEGER" },
+            { name: "upb", type: "DOUBLE" },
+          ],
+          primaryKey: "loan_id",
+        }],
+        relationships: [],
+        views: [],
+      };
+
+      function setStatus(msg, cls) {
+        status.textContent = msg;
+        status.className = `status ${cls || ""}`;
+      }
+
+      function showError(msg) {
+        errorDiv.textContent = msg;
+        errorDiv.classList.remove("hidden");
+      }
+
+      async function init() {
+        try {
+          setStatus("Loading WASM...", "loading");
+          engine = await WrenEngine.init({ wasmUrl: "./wren_core_wasm_bg.wasm" });
+
+          setStatus("Fetching Parquet...", "loading");
+          const resp = await fetch("./demo.parquet");
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const buf = await resp.arrayBuffer();
+
+          setStatus("Registering table...", "loading");
+          await engine.registerParquet("loans", buf);
+
+          setStatus("Loading MDL...", "loading");
+          await engine.loadMDL(MDL, { source: "" });
+
+          setStatus("Ready", "success");
+          runBtn.disabled = false;
+        } catch (e) {
+          setStatus("Init failed", "error");
+          showError(e.message || String(e));
+          console.error(e);
+        } finally {
+          loadingDiv.classList.add("hidden");
+        }
+      }
+
+      async function runQuery() {
+        const sql = sqlInput.value.trim();
+        if (!sql || !engine) return;
+        errorDiv.classList.add("hidden");
+        tableWrapper.classList.add("hidden");
+        setStatus("Running...", "loading");
+        runBtn.disabled = true;
+        try {
+          const t0 = performance.now();
+          const rows = await engine.query(sql);
+          const ms = (performance.now() - t0).toFixed(1);
+          setStatus(`${rows.length} rows in ${ms}ms`, "success");
+          renderResults(rows);
+        } catch (e) {
+          setStatus("Error", "error");
+          showError(e.message || String(e));
+          console.error(e);
+        } finally {
+          runBtn.disabled = false;
+        }
+      }
+
+      function renderResults(rows) {
+        if (!rows.length) { showError("No results."); return; }
+        const keys = Object.keys(rows[0]);
+        resultTable.innerHTML = "";
+        const thead = document.createElement("thead");
+        const hr = document.createElement("tr");
+        keys.forEach(k => { const th = document.createElement("th"); th.textContent = k; hr.appendChild(th); });
+        thead.appendChild(hr);
+        const tbody = document.createElement("tbody");
+        rows.forEach(row => {
+          const tr = document.createElement("tr");
+          keys.forEach(k => { const td = document.createElement("td"); td.textContent = row[k] ?? ""; tr.appendChild(td); });
+          tbody.appendChild(tr);
+        });
+        resultTable.appendChild(thead);
+        resultTable.appendChild(tbody);
+        rowCount.textContent = `${rows.length.toLocaleString()} rows`;
+        tableWrapper.classList.remove("hidden");
+      }
+
+      runBtn.addEventListener("click", runQuery);
+      sqlInput.addEventListener("keydown", e => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runQuery(); }
+      });
+
+      init();
+    </script>
+  </body>
+</html>

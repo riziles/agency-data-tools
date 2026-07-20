@@ -68,6 +68,17 @@ The CSV is pipe-delimited with NO header row. The schema has 113 fields:
 - The `--r2-bucket` flag on the ingest tool is available but may time out depending on network conditions
 - Bucket: `fannie-mae-poc`
 
+## Query Layer
+
+- **`query/`** — Browser-based DataFusion WASM query app
+  - `index.html` — Self-contained app (dark theme, SQL editor, result table)
+  - `server.cjs` — Tiny Node.js dev server with CORS
+  - Imports `@wrenai/wren-core-wasm` from CDN (DataFusion WASM)
+  - WASM binary (`wren_core_wasm_bg.wasm`, 69 MB) served locally from the project
+  - Inline mode: downloads Parquet once, queries in memory
+  - `datafusion-wasm-bundler@0.3.3` is **broken** for Parquet (overflow bug in parquet-54.2.0)
+  - Run: `node query/server.cjs`, open http://localhost:8765
+
 ## Build & Run
 
 ```bash
