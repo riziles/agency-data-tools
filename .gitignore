@@ -1,0 +1,29 @@
+# Secrets
+.env
+secrets/
+*.local/
+
+# Rust build artifacts
+target/
+
+# Playwright artifacts
+.playwright-cli/
+fannie-portal.png
+node_modules/
+.wrangler/
+.wasm/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Agent config (non-project-specific)
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
