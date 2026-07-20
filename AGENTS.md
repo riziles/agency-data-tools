@@ -59,6 +59,15 @@ The CSV is pipe-delimited with NO header row. The schema has 113 fields:
 
 **Reference:** [CRT File Layout and Glossary PDF](http://capitalmarkets.fanniemae.com/sites/capmrkt/files/2023-06/crt-file-layout-and-glossary.pdf) (108 positions; note position 1 "Reference Pool ID" is NA for SF data)
 
+## R2 Upload
+
+- **Use wrangler, not the Rust S3 API.** The direct S3 endpoint (`account-id.r2.cloudflarestorage.com`) may have connectivity issues. Wrangler's API-based upload works reliably:
+  ```bash
+  pnpm wrangler r2 object put fannie-mae-poc/2024/Q1/loans.parquet --file test-data/2024Q1.parquet
+  ```
+- The `--r2-bucket` flag on the ingest tool is available but may time out depending on network conditions
+- Bucket: `fannie-mae-poc`
+
 ## Build & Run
 
 ```bash
