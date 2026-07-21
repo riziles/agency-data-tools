@@ -1,20 +1,29 @@
 # Phase 1: DataFusion Flight SQL Server (local)
 
+## Stack
+
+- **DataFusion** — query engine
+- **datafusion-ducklake** — table format + catalog (SQLite metadata, Parquet data)
+- **Arrow Flight SQL** — wire protocol for browser client
+- **tonic-web** — gRPC-web support so the browser can connect
+
 ## What it does
 
 A Rust binary that:
 - Exposes a Flight SQL endpoint on `localhost:50051`
-- Reads Parquet files from the local filesystem
-- Executes SQL queries using DataFusion and streams results as Arrow record batches
+- Stores table metadata in a local SQLite database (DuckLake catalog)
+- Reads Parquet files from local disk
+- Executes SQL queries using DataFusion → DuckLake and streams results as Arrow record batches
 
 ```
 Browser                          Rust binary              Local disk
   │                                │                        │
-  │  gRPC-web Flight SQL           │  read Parquet           │
-  │ ────────────────────────────▶  │ ────────────────────▶  │
-  │                                │                        │
-  │  Arrow RecordBatches           │                        │
-  │ ◀────────────────────────────  │                        │
+  │  gRPC-web Flight SQL           │  DuckLake catalog      │
+  │ ────────────────────────────▶  │  (SQLite metadata)     │
+  │                                │  ↓                     │
+  │                                │  DataFusion query      │
+  │  Arrow RecordBatches           │  ↓                     │
+  │ ◀────────────────────────────  │  Parquet files         │
 ```
 
 ## Dependencies
@@ -22,44 +31,76 @@ Browser                          Rust binary              Local disk
 ```toml
 [dependencies]
 datafusion = "53"
+datafusion-ducklake = { version = "0.5", features = ["metadata-sqlite", "write-sqlite"] }
 datafusion-flight-sql-server = "53"
 tokio = { version = "1", features = ["full"] }
 tonic = "0.12"
-tonic-web = "0.12"    # gRPC-web support for browser
+tonic-web = "0.12"
 clap = { version = "4", features = ["derive"] }
 ```
 
+Why `datafusion-ducklake` instead of raw DataFusion?
+
+| Raw DataFusion | datafusion-ducklake |
+|---|---|
+| `ctx.register_parquet("t", "file.parquet")` | SQL `ADD FILES 'data/*.parquet' INTO TABLE loans` |
+| No metadata tracking | Catalog tracks which files belong to which table |
+| No schema enforcement | Schema validated on ingest |
+| Just read | Read + write + maintenance (compaction, orphan cleanup) |
+| No time travel | Snapshots |
+
 ## Key implementation points
 
-### 1. Read Parquet from local files
+### 1. DuckLake catalog with SQLite
 
-DataFusion reads Parquet from the filesystem with zero config:
+SQLite is embedded — no server process needed:
 
 ```rust
-let ctx = SessionContext::new();
+use datafusion::prelude::*;
+use datafusion_ducklake::{DuckLakeCatalog, SqliteMetadataProvider};
 
-// Register a directory of Parquet files (supports glob patterns)
-ctx.register_parquet("loans", "data/2024Q1.parquet", ParquetReadOptions::default()).await?;
+let provider = SqliteMetadataProvider::new("sqlite://catalog.db").await?;
+
+let catalog = DuckLakeCatalog::new(provider)?;
+let ctx = SessionContext::new();
+ctx.register_catalog("ducklake", Arc::new(catalog));
 ```
 
-The `data/` directory contains the already-converted Parquet files from the ingestion pipeline (e.g., `ingest/test-data/`).
+### 2. Ingest Parquet into DuckLake
 
-### 2. Implement FlightSqlService
+Once the catalog is registered, add our existing Parquet file:
+
+```sql
+-- Run inside the DuckLake catalog context
+ADD FILES 'data/2024Q1.parquet' INTO TABLE ducklake.main.loans;
+```
+
+Or programmatically via DataFusion:
 
 ```rust
+ctx.sql("ADD FILES 'data/2024Q1.parquet' INTO TABLE ducklake.main.loans").await?;
+```
+
+DuckLake reads the Parquet schema, creates the table metadata in SQLite, and the data stays in place (no copy).
+
+### 3. Flight SQL service
+
+```rust
+use datafusion_flight_sql_server::FlightSqlService;
+
+struct FannieMaeServer {
+    ctx: SessionContext,
+}
+
 #[tonic::async_trait]
-impl FlightSqlService for FannieMaeFlightServer {
-    // Tables are auto-detected from SessionContext
+impl FlightSqlService for FannieMaeServer {
+    // Tables auto-detected from SessionContext
     // Queries forwarded to ctx.sql(sql).collect().await
-    // Results streamed as Arrow FlightData batches
+    // Results streamed as Arrow FlightData
 }
 ```
 
-The `datafusion-flight-sql-server` crate provides the trait. Most methods are boilerplate — `do_get()` runs SQL and streams results.
-
-### 3. gRPC-web support
-
-Browsers can't do raw gRPC (HTTP/2). Add `tonic-web` to accept gRPC-web over HTTP/1.1:
+### 4. gRPC-web for browser access
 
 ```rust
 use tonic_web::GrpcWebLayer;
@@ -67,52 +108,41 @@ use tower_http::cors::CorsLayer;
 
 let svc = FlightServiceServer::new(service);
 
-let app = tonic::transport::Server::builder()
-    .accept_http1(true)                       // enable HTTP/1.1
-    .layer(GrpcWebLayer::new())               // gRPC-web wrapper
-    .layer(CorsLayer::permissive())            // browser CORS
+tonic::transport::Server::builder()
+    .accept_http1(true)
+    .layer(GrpcWebLayer::new())
+    .layer(CorsLayer::permissive())
     .add_service(svc)
-    .serve(addr);
+    .serve(addr)
+    .await?;
 ```
-
-### 4. Schema
-
-Register tables with the 28-column subset used in the browser app:
-
-| Category | Columns |
-|---|---|
-| Identifiers | loan_id, monthly_reporting_period |
-| Loan terms | original_interest_rate, current_interest_rate, original_upb, current_actual_upb, original_loan_term |
-| Dates | origination_date, first_payment_date, maturity_date, loan_age |
-| Risk metrics | original_ltv, original_cltv, dti, borrower_credit_score_at_origination, co_borrower_credit_score_at_origination |
-| Property | property_state, property_type, number_of_units, occupancy_status, msa, zip_code_short |
-| Borrower | first_time_home_buyer_indicator, number_of_borrowers, loan_purpose |
-| Servicing | channel, seller_name, servicer_name |
 
 ## File structure
 
 ```
 flight-server/
 ├── Cargo.toml
-├── data/                    # Symlink or copy to ingest/test-data/
-│   └── 2024Q1.parquet       # 39 MB, 3,989,404 rows
+├── data/
+│   └── 2024Q1.parquet          # Copy from ingest/test-data/ (39 MB)
 └── src/
-    └── main.rs              # Server setup, register tables, serve
-```
+    └── main.rs                 # Single file: catalog, ingest, serve
 
-Single binary. Copy the Parquet file from the existing `ingest/test-data/` directory.
+# Runtime state (gitignored):
+#   catalog.db                  # SQLite metadata (auto-created)
+```
 
 ## Test with grpcurl
 
 ```bash
 cargo run -- --bind 127.0.0.1:50051 --data-dir ./data
 
-# List tables
-grpcurl -plaintext localhost:50051 \
-  arrow.flight.protocol.FlightService/ListFlights
+# First run: ingest the Parquet file
+grpcurl -plaintext -d '{"query":"ADD FILES '"'"'data/2024Q1.parquet'"'"' INTO TABLE ducklake.main.loans"}' \
+  localhost:50051 \
+  arrow.flight.protocol.FlightService/GetFlightInfo
 
-# Run a query
-grpcurl -plaintext -d '{"query":"SELECT count(*) FROM \"Loans\""}' \
+# Query it
+grpcurl -plaintext -d '{"query":"SELECT count(*) FROM ducklake.main.loans"}' \
   localhost:50051 \
   arrow.flight.protocol.FlightService/GetFlightInfo
 ```
