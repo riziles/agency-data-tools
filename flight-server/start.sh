@@ -17,10 +17,24 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# ── pick binary ──
+if [ "$1" = "--release" ]; then
+  BIN="$SCRIPT_DIR/target/release/flight-sql-server"
+  if [ ! -f "$BIN" ]; then
+    echo "Building release binary..."
+    cd "$SCRIPT_DIR" && cargo build --release 2>&1
+  fi
+else
+  BIN="$SCRIPT_DIR/target/debug/flight-sql-server"
+  if [ ! -f "$BIN" ]; then
+    echo "Building debug binary..."
+    cd "$SCRIPT_DIR" && cargo build 2>&1
+  fi
+fi
+
 # ── Flight SQL server ──
-echo "Starting Flight SQL server (port 50051)..."
-cd "$SCRIPT_DIR"
-cargo run -- --data-dir ./data --parquet ./data/2024Q1.parquet &
+echo "Starting Flight SQL server (${BIN##*/}) on port 50051..."
+"$BIN" --data-dir "$SCRIPT_DIR/data" --parquet "$SCRIPT_DIR/data/2024Q1.parquet" &
 echo $! >> "$PID_FILE"
 
 # ── Wait for Flight SQL to be ready ──
