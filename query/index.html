@@ -40,7 +40,7 @@
   <body>
     <header>
       <h1>Fannie Mae Loan Performance Data</h1>
-      <p class="subtitle">2024 Q1 — 3,989,404 loans — DataFusion WASM (inline mode)</p>
+      <p class="subtitle">2024 Q1 — 3,989,404 loans — DataFusion WASM</p>
     </header>
     <main>
       <div id="loading" class="init-panel">
@@ -67,54 +67,13 @@
     </main>
     <script type="module">
       import { WrenEngine } from "https://unpkg.com/@wrenai/wren-core-wasm@0.4.1/dist/index.js";
-      const R2_URL = "https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans.parquet";
-      const loadStatus = document.getElementById("load-status");
-      const progressFill = document.getElementById("progress-fill");
-      const loadingDiv = document.getElementById("loading");
-      const appDiv = document.getElementById("app");
-      const sqlInput = document.getElementById("sql-input");
-      const runBtn = document.getElementById("run-btn");
-      const statusEl = document.getElementById("status");
-      const errorDiv = document.getElementById("error");
-      const tableWrapper = document.getElementById("result-table-wrapper");
-      const resultTable = document.getElementById("result-table");
-      const rowCountEl = document.getElementById("row-count");
-      let engine = null;
-      const MDL_COLS = ["loan_id","monthly_reporting_period","channel","seller_name","servicer_name","original_interest_rate","current_interest_rate","original_upb","current_actual_upb","original_loan_term","origination_date","first_payment_date","loan_age","maturity_date","original_ltv","original_cltv","number_of_borrowers","dti","borrower_credit_score_at_origination","co_borrower_credit_score_at_origination","first_time_home_buyer_indicator","loan_purpose","property_type","number_of_units","occupancy_status","property_state","msa","zip_code_short"];
-      const MDL = { catalog: "wren", schema: "public", models: [{ name: "Loans", tableReference: { table: "loans" }, columns: MDL_COLS.map(c => { const t = c.includes("_score") || c.includes("_term") || c.includes("_age") || c === "dti" || c.includes("_ltv") || c.includes("_cltv") || c.includes("_units") || c.includes("_borrowers") ? "INTEGER" : c.includes("_upb") || c.includes("_rate") ? "DOUBLE" : "VARCHAR"; return { name: c, type: t }; }), primaryKey: "loan_id" }], relationships: [], views: [] };
-      function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = `status ${cls || ""}`; }
-      async function init() {
-        try {
-          loadStatus.textContent = "Loading DataFusion WASM engine…"; progressFill.style.width = "5%";
-          engine = await WrenEngine.init();
-          loadStatus.textContent = "Downloading data from R2 (38.8 MB)…"; progressFill.style.width = "15%";
-          const t0 = performance.now(); const resp = await fetch(R2_URL);
-          if (!resp.ok) throw new Error("HTTP " + resp.status); const buf = await resp.arrayBuffer();
-          progressFill.style.width = "75%"; loadStatus.textContent = "Downloaded " + (buf.byteLength / 1048576).toFixed(1) + " MB in " + ((performance.now() - t0) / 1000).toFixed(1) + "s";
-          loadStatus.textContent = "Parsing Parquet…"; await engine.registerParquet("loans", buf); progressFill.style.width = "90%";
-          loadStatus.textContent = "Loading schema…"; await engine.loadMDL(MDL, { source: "" }); progressFill.style.width = "100%";
-          loadStatus.textContent = "Ready"; setTimeout(() => { loadingDiv.classList.add("hidden"); appDiv.classList.remove("hidden"); }, 500);
-        } catch (e) { loadStatus.textContent = "Error: " + (e.message || e); progressFill.style.background = "var(--error)"; console.error(e); }
-      }
-      async function runQuery() {
-        const sql = sqlInput.value.trim(); if (!sql || !engine) return;
-        errorDiv.classList.add("hidden"); tableWrapper.classList.add("hidden"); setStatus("Running…", "loading"); runBtn.disabled = true;
-        try { const t0 = performance.now(); const rows = await engine.query(sql); const ms = (performance.now() - t0).toFixed(0); setStatus(rows.length + " rows in " + ms + "ms", "success"); renderResults(rows); }
-        catch (e) { setStatus("Error", "error"); errorDiv.textContent = e.message || String(e); errorDiv.classList.remove("hidden"); }
-        finally { runBtn.disabled = false; }
-      }
-      function renderResults(rows) {
-        if (!rows.length) { errorDiv.textContent = "No results."; errorDiv.classList.remove("hidden"); return; }
-        const keys = Object.keys(rows[0]); resultTable.innerHTML = "";
-        const thead = document.createElement("thead"); const hr = document.createElement("tr");
-        keys.forEach(k => { const th = document.createElement("th"); th.textContent = k; hr.appendChild(th); }); thead.appendChild(hr);
-        const tbody = document.createElement("tbody");
-        rows.forEach(row => { const tr = document.createElement("tr"); keys.forEach(k => { const td = document.createElement("td"); td.textContent = row[k] ?? ""; tr.appendChild(td); }); tbody.appendChild(tr); });
-        resultTable.appendChild(thead); resultTable.appendChild(tbody); rowCountEl.textContent = rows.length.toLocaleString() + " rows"; tableWrapper.classList.remove("hidden");
-      }
-      runBtn.addEventListener("click", runQuery);
-      sqlInput.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runQuery(); } });
-      init();
+      const R2_URL="https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans.parquet";
+      const e=id=>document.getElementById(id);
+      let engine=null;
+      const MDL={catalog:"wren",schema:"public",models:[{name:"Loans",tableReference:{table:"loans"},columns:["loan_id","monthly_reporting_period","channel","seller_name","servicer_name","original_interest_rate","current_interest_rate","original_upb","current_actual_upb","original_loan_term","origination_date","first_payment_date","loan_age","maturity_date","original_ltv","original_cltv","number_of_borrowers","dti","borrower_credit_score_at_origination","co_borrower_credit_score_at_origination","first_time_home_buyer_indicator","loan_purpose","property_type","number_of_units","occupancy_status","property_state","msa","zip_code_short"].map(c=>({name:c,type:c.includes("_score")||c.includes("_term")||c.includes("_age")||c==="dti"||c.includes("_ltv")||c.includes("_cltv")||c.includes("_units")||c.includes("_borrowers")?"INTEGER":c.includes("_upb")||c.includes("_rate")?"DOUBLE":"VARCHAR"})),primaryKey:"loan_id"}],relationships:[],views:[]};
+      async function init(){try{e("load-status").textContent="Loading DataFusion WASM engine…";e("progress-fill").style.width="5%";engine=await WrenEngine.init();e("load-status").textContent="Downloading data from R2 (38.8 MB)…";e("progress-fill").style.width="15%";const t0=performance.now(),r=await fetch(R2_URL);if(!r.ok)throw Error("HTTP "+r.status);const b=await r.arrayBuffer();e("progress-fill").style.width="75%";e("load-status").textContent="Downloaded "+(b.byteLength/1048576).toFixed(1)+" MB in "+((performance.now()-t0)/1e3).toFixed(1)+"s";e("load-status").textContent="Parsing Parquet…";await engine.registerParquet("loans",b);e("progress-fill").style.width="90%";e("load-status").textContent="Loading schema…";await engine.loadMDL(MDL,{source:""});e("progress-fill").style.width="100%";e("load-status").textContent="Ready";setTimeout(()=>{e("loading").classList.add("hidden");e("app").classList.remove("hidden")},500)}catch(t){e("load-status").textContent="Error: "+(t.message||t);e("progress-fill").style.background="var(--error)";console.error(t)}}
+      async function runQuery(){const s=e("sql-input").value.trim();if(!s||!engine)return;e("error").classList.add("hidden");e("result-table-wrapper").classList.add("hidden");e("status").textContent="Running…";e("status").className="status loading";e("run-btn").disabled=true;try{const t0=performance.now(),rows=await engine.query(s),ms=(performance.now()-t0).toFixed(0);e("status").textContent=rows.length+" rows in "+ms+"ms";e("status").className="status success";if(!rows.length){e("error").textContent="No results.";e("error").classList.remove("hidden");return}const keys=Object.keys(rows[0]);e("result-table").innerHTML="";const thead=document.createElement("thead"),hr=document.createElement("tr");keys.forEach(k=>{const th=document.createElement("th");th.textContent=k;hr.appendChild(th)});thead.appendChild(hr);const tbody=document.createElement("tbody");rows.forEach(r=>{const tr=document.createElement("tr");keys.forEach(k=>{const td=document.createElement("td");td.textContent=r[k]??"";tr.appendChild(td)});tbody.appendChild(tr)});e("result-table").appendChild(thead);e("result-table").appendChild(tbody);e("row-count").textContent=rows.length.toLocaleString()+" rows";e("result-table-wrapper").classList.remove("hidden")}catch(t){e("status").textContent="Error";e("status").className="status error";e("error").textContent=t.message||String(t);e("error").classList.remove("hidden")}finally{e("run-btn").disabled=false}}
+      e("run-btn").addEventListener("click",runQuery);e("sql-input").addEventListener("keydown",t=>{if(t.key==="Enter"&&(t.ctrlKey||t.metaKey)){t.preventDefault();runQuery()}});init();
     </script>
   </body>
 </html>
