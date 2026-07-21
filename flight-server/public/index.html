@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fannie Mae Loan Data — DataFusion Flight SQL</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>">
+    <style>
+      :root { --bg: #1a1a2e; --surface: #16213e; --primary: #e94560; --text: #eaeaea; --muted: #888; --border: #333; --success: #4caf50; --error: #f44336; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+      header { background: var(--surface); padding: 1.5rem 2rem; border-bottom: 2px solid var(--primary); }
+      header h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+      .subtitle { color: var(--muted); font-size: 0.9rem; }
+      main { max-width: 100%; padding: 1rem; }
+      .query-panel { background: var(--surface); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+      #sql-input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; font-family: monospace; font-size: 0.9rem; resize: vertical; }
+      #sql-input:focus { outline: none; border-color: var(--primary); }
+      .query-actions { display: flex; align-items: center; gap: 1rem; margin-top: 0.75rem; }
+      #run-btn { background: var(--primary); color: white; border: none; border-radius: 6px; padding: 0.5rem 1.5rem; font-size: 0.9rem; cursor: pointer; }
+      #run-btn:hover { opacity: 0.85; }
+      #run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .hint { color: var(--muted); font-size: 0.8rem; }
+      .status { margin-left: auto; font-size: 0.8rem; }
+      .status.success { color: var(--success); } .status.error { color: var(--error); } .status.loading { color: var(--muted); }
+      .init-panel { background: var(--surface); border-radius: 8px; padding: 2rem; text-align: center; margin-bottom: 1rem; }
+      .init-panel p { color: var(--muted); margin-bottom: 1rem; }
+      .progress-bar { width: 100%; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 0.5rem 0; }
+      .progress-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.5s; width: 0%; }
+      .results { background: var(--surface); border-radius: 8px; padding: 1rem; overflow-x: auto; }
+      .hidden { display: none; }
+      .error { color: var(--error); padding: 1rem; border: 1px solid var(--error); border-radius: 6px; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; }
+      #result-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+      #result-table th { background: var(--bg); color: var(--primary); padding: 0.5rem 0.75rem; text-align: left; white-space: nowrap; position: sticky; top: 0; }
+      #result-table td { padding: 0.35rem 0.75rem; border-bottom: 1px solid var(--border); white-space: nowrap; max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
+      #result-table tr:hover td { background: rgba(233, 69, 96, 0.08); }
+      #row-count { color: var(--muted); font-size: 0.8rem; margin-top: 0.5rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Fannie Mae Loan Performance Data</h1>
+      <p class="subtitle">2024 Q1 — 3,989,404 loans — DataFusion Flight SQL</p>
+    </header>
+    <main>
+      <div id="loading" class="init-panel">
+        <p id="load-status">Connecting...</p>
+        <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+      </div>
+      <div id="app" class="hidden">
+        <section class="query-panel">
+          <textarea id="sql-input" rows="4">SELECT loan_id, property_state, original_upb, original_interest_rate, borrower_credit_score_at_origination FROM ducklake.main.loans WHERE property_state = 'PA' LIMIT 10</textarea>
+          <div class="query-actions">
+            <button id="run-btn">Run Query</button>
+            <span class="hint">Ctrl+Enter to run</span>
+            <span id="status" class="status"></span>
+          </div>
+        </section>
+        <section class="results">
+          <div id="error" class="error hidden"></div>
+          <div id="result-table-wrapper" class="hidden">
+            <table id="result-table"></table>
+            <p id="row-count"></p>
+          </div>
+        </section>
+      </div>
+    </main>
+    <script src="dist/bundle.js"></script>
+  </body>
+</html>

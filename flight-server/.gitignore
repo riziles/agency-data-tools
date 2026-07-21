@@ -4,3 +4,5 @@
 /data/catalog.db-journal
 /data/catalog.db-wal
 /data/datalake/
+/public/node_modules/
+/public/dist/
