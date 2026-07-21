@@ -1,0 +1,6 @@
+/target/
+/Cargo.lock
+/data/catalog.db
+/data/catalog.db-journal
+/data/catalog.db-wal
+/data/datalake/

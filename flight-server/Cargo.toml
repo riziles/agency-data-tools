@@ -1,0 +1,21 @@
+[package]
+name = "flight-sql-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+datafusion = "54"
+datafusion-ducklake = { version = "0.5", features = ["metadata-sqlite", "write-sqlite"] }
+datafusion-flight-sql-server = { git = "https://github.com/datafusion-contrib/datafusion-flight-sql-server" }
+tokio = { version = "1", features = ["full"] }
+tonic = "0.14"
+tonic-web = "0.14"
+tower-http = { version = "0.6", features = ["cors"] }
+object_store = "0.13"
+arrow = "58"
+arrow-flight = { version = "58", features = ["flight-sql"] }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+prost = "0.14"
+tokio-stream = "0.1"
+futures = "0.3"
