@@ -3,3 +3,4 @@ demo.parquet
 node_modules/
 dist/
 *.log
+wren_core_wasm_bg.wasm
