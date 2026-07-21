@@ -19,7 +19,7 @@ async function init() {
 
   try {
     client = await connect({
-      endpoint: "http://localhost:50051",
+      endpoint: window.location.origin,
     });
     R("progress-fill").style.width = "100%";
     R("load-status").textContent = "Connected to DataFusion Flight SQL";
