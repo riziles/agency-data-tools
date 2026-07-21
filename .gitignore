@@ -35,3 +35,4 @@ Thumbs.db
 !test-data/*.csv
 *.parquet
 !test-data/sample.parquet
+/query/
