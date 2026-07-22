@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Fannie Mae — DataFusion WASM</title>
+  <style>
+    :root { --bg: #1a1a2e; --surface: #16213e; --primary: #e94560; --text: #eaeaea; --muted: #888; --border: #333; --success: #4caf50; --error: #f44336; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    header { background: var(--surface); padding: 1.5rem 2rem; border-bottom: 2px solid var(--primary); }
+    header h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+    .subtitle { color: var(--muted); font-size: 0.9rem; }
+    main { max-width: 100%; padding: 1rem; }
+    .query-panel { background: var(--surface); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    #sql-input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; font-family: monospace; font-size: 0.9rem; resize: vertical; }
+    #sql-input:focus { outline: none; border-color: var(--primary); }
+    .query-actions { display: flex; align-items: center; gap: 1rem; margin-top: 0.75rem; }
+    #run-btn { background: var(--primary); color: white; border: none; border-radius: 6px; padding: 0.5rem 1.5rem; font-size: 0.9rem; cursor: pointer; }
+    #run-btn:hover { opacity: 0.85; }
+    #run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .hint { color: var(--muted); font-size: 0.8rem; }
+    .status { margin-left: auto; font-size: 0.8rem; } .status.success { color: var(--success); } .status.error { color: var(--error); } .status.loading { color: var(--muted); }
+    .init-panel { background: var(--surface); border-radius: 8px; padding: 2rem; text-align: center; margin-bottom: 1rem; }
+    .init-panel p { color: var(--muted); margin-bottom: 1rem; }
+    .progress-bar { width: 100%; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 0.5rem 0; }
+    .progress-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.5s; width: 0%; }
+    .results { background: var(--surface); border-radius: 8px; padding: 1rem; overflow-x: auto; }
+    .hidden { display: none; }
+    .error { color: var(--error); padding: 1rem; border: 1px solid var(--error); border-radius: 6px; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; }
+    #result-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    #result-table th { background: var(--bg); color: var(--primary); padding: 0.5rem 0.75rem; text-align: left; white-space: nowrap; position: sticky; top: 0; }
+    #result-table td { padding: 0.35rem 0.75rem; border-bottom: 1px solid var(--border); white-space: nowrap; max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
+    #result-table tr:hover td { background: rgba(233, 69, 96, 0.08); }
+    #row-count { color: var(--muted); font-size: 0.8rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Fannie Mae Loan Performance Data</h1>
+    <p class="subtitle">2024 Q1 — 3,989,404 loans — DataFusion WASM + parquet-wasm</p>
+  </header>
+  <main>
+    <div id="loading" class="init-panel">
+      <p id="load-status">Loading DataFusion WASM...</p>
+      <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+    </div>
+    <div id="app" class="hidden">
+      <section class="query-panel">
+        <textarea id="sql-input" rows="4">SELECT * FROM data LIMIT 10</textarea>
+        <div class="query-actions">
+          <button id="run-btn">Run Query</button>
+          <span class="hint">Ctrl+Enter to run</span>
+          <span id="status" class="status"></span>
+        </div>
+      </section>
+      <section class="results">
+        <div id="error" class="error hidden"></div>
+        <div id="result-table-wrapper" class="hidden">
+          <table id="result-table"></table>
+          <p id="row-count"></p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+<script type="importmap">
+{
+  "imports": {
+    "parquet-wasm": "https://cdn.jsdelivr.net/npm/parquet-wasm@0.6.1/esm/+esm"
+  }
+}
+</script>
+
+<script type="module">
+import wasmInit, { ParquetFile } from "parquet-wasm";
+import init, { query_json } from "./wasm_query.js";
+
+const R = (id) => document.getElementById(id);
+const R2_URL = "https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans.parquet";
+
+let parquetFile = null;
+let dfLoaded = false;
+
+// Init
+async function initAll() {
+  const fill = R("progress-fill");
+  const status = R("load-status");
+
+  // Load DataFusion WASM
+  status.textContent = "Loading DataFusion WASM (14 MB gzip)...";
+  fill.style.width = "10%";
+  await init();
+  fill.style.width = "40%";
+  status.textContent = "DataFusion loaded. Opening Parquet...";
+
+  // Open remote Parquet
+  parquetFile = await ParquetFile.fromUrl(R2_URL);
+  fill.style.width = "70%";
+  const meta = parquetFile.metadata();
+  const rows = meta.fileMetadata().numRows().toLocaleString();
+  status.textContent = `Connected — ${rows} rows available`;
+
+  fill.style.width = "100%";
+  dfLoaded = true;
+
+  setTimeout(() => {
+    R("loading").classList.add("hidden");
+    R("app").classList.remove("hidden");
+  }, 300);
+}
+
+// Event listeners
+R("sql-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runQuery(); }
+});
+R("run-btn").addEventListener("click", runQuery);
+
+async function runQuery() {
+  const sql = R("sql-input").value.trim();
+  if (!sql || !dfLoaded) return;
+
+  R("error").classList.add("hidden");
+  R("result-table-wrapper").classList.add("hidden");
+  R("status").textContent = "Fetching + running...";
+  R("status").className = "status loading";
+  R("run-btn").disabled = true;
+
+  try {
+    const t0 = performance.now();
+
+    // Fetch a chunk of parquet data (limited row group)
+    const wasmTable = await parquetFile.read({
+      limit: 10000,
+      columns: ["property_state", "original_upb", "original_interest_rate", "borrower_credit_score_at_origination", "loan_purpose", "original_loan_term"]
+    });
+
+    // Convert WASM table → JSON via RecordBatch IPC (or direct)
+    // Since intoIPCStream is broken for apache-arrow, we get data from the RecordBatch API
+    const readable = await parquetFile.stream({
+      limit: 10000,
+      columns: ["property_state", "original_upb", "original_interest_rate", "borrower_credit_score_at_origination", "loan_purpose", "original_loan_term"]
+    });
+
+    const reader = readable.getReader();
+    const rows = [];
+    while (true) {
+      const { value: batch, done } = await reader.read();
+      if (done) break;
+      const nRows = batch.numRows;
+      const schema = batch.schema;
+
+      // Extract column data manually — need to access the Arrow arrays in WASM
+      // For now, get column names from batch metadata
+      // RecordBatch exposes: numRows, numColumns, schema
+      // Schema exposes fields with name/type
+      const fieldNames = [];
+      // Since we can't easily iterate JS-WASM objects, we use FFI approach
+
+      batch.free();
+    }
+    reader.releaseLock();
+
+    const ms = (performance.now() - t0).toFixed(0);
+    R("status").textContent = `${rows.length} rows loaded in ${ms}ms`;
+  } catch (e) {
+    R("status").textContent = "Error";
+    R("status").className = "status error";
+    R("error").textContent = e.message || String(e);
+    R("error").classList.remove("hidden");
+  } finally {
+    R("run-btn").disabled = false;
+  }
+}
+
+initAll().catch(e => {
+  R("load-status").textContent = "Failed: " + (e.message || e);
+  R("progress-fill").style.background = "var(--error)";
+  console.error(e);
+});
+</script>
+</body>
+</html>
