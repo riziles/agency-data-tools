@@ -5,18 +5,17 @@ export function init() {
 }
 
 /**
- * Accept a JSON array of objects (each object = one row, keys = column names)
- * and run SQL against it. Returns JSON result.
- * @param {string} json_rows
+ * Accept raw Parquet bytes and run SQL against them. Returns JSON result.
+ * @param {Uint8Array} parquet_bytes
  * @param {string} sql
  * @returns {Promise<string>}
  */
-export function query_json(json_rows, sql) {
-    const ptr0 = passStringToWasm0(json_rows, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+export function query_parquet(parquet_bytes, sql) {
+    const ptr0 = passArray8ToWasm0(parquet_bytes, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(sql, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.query_json(ptr0, len0, ptr1, len1);
+    const ret = wasm.query_parquet(ptr0, len0, ptr1, len1);
     return ret;
 }
 function __wbg_get_imports() {
@@ -57,6 +56,14 @@ function __wbg_get_imports() {
         __wbg_getRandomValues_ceb34d8ffce7e87f: function() { return handleError(function (arg0, arg1) {
             globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
         }, arguments); },
+        __wbg_getTime_d6f070c088c9b5ed: function(arg0) {
+            const ret = arg0.getTime();
+            return ret;
+        },
+        __wbg_new_0_3da9e97f24fc69be: function() {
+            const ret = new Date();
+            return ret;
+        },
         __wbg_new_227d7c05414eb861: function() {
             const ret = new Error();
             return ret;
@@ -126,7 +133,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 44226, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 57519, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm_bindgen_ff9de1b100f9ec60___convert__closures_____invoke___wasm_bindgen_ff9de1b100f9ec60___JsValue__core_7d5f0a2ba6a62c33___result__Result_____wasm_bindgen_ff9de1b100f9ec60___JsError___true_);
             return ret;
         },
@@ -236,6 +243,13 @@ function makeMutClosure(arg0, arg1, f) {
     };
     CLOSURE_DTORS.register(real, state, state);
     return real;
+}
+
+function passArray8ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 1, 1) >>> 0;
+    getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
 }
 
 function passStringToWasm0(arg, malloc, realloc) {

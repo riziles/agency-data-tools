@@ -14,10 +14,9 @@
     .query-panel { background: var(--surface); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
     #sql-input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; font-family: monospace; font-size: 0.9rem; resize: vertical; }
     #sql-input:focus { outline: none; border-color: var(--primary); }
-    .query-actions { display: flex; align-items: center; gap: 1rem; margin-top: 0.75rem; }
+    .query-actions { display: flex; align-items: center; gap: 1rem; margin-top: 0.75rem; flex-wrap: wrap; }
     #run-btn { background: var(--primary); color: white; border: none; border-radius: 6px; padding: 0.5rem 1.5rem; font-size: 0.9rem; cursor: pointer; }
-    #run-btn:hover { opacity: 0.85; }
-    #run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    #run-btn:hover { opacity: 0.85; } #run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .hint { color: var(--muted); font-size: 0.8rem; }
     .status { margin-left: auto; font-size: 0.8rem; } .status.success { color: var(--success); } .status.error { color: var(--error); } .status.loading { color: var(--muted); }
     .init-panel { background: var(--surface); border-radius: 8px; padding: 2rem; text-align: center; margin-bottom: 1rem; }
@@ -26,7 +25,7 @@
     .progress-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.5s; width: 0%; }
     .results { background: var(--surface); border-radius: 8px; padding: 1rem; overflow-x: auto; }
     .hidden { display: none; }
-    .error { color: var(--error); padding: 1rem; border: 1px solid var(--error); border-radius: 6px; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; }
+    .error-box { color: var(--error); padding: 1rem; border: 1px solid var(--error); border-radius: 6px; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; }
     #result-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
     #result-table th { background: var(--bg); color: var(--primary); padding: 0.5rem 0.75rem; text-align: left; white-space: nowrap; position: sticky; top: 0; }
     #result-table td { padding: 0.35rem 0.75rem; border-bottom: 1px solid var(--border); white-space: nowrap; max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
@@ -37,24 +36,24 @@
 <body>
   <header>
     <h1>Fannie Mae Loan Performance Data</h1>
-    <p class="subtitle">2024 Q1 — 3,989,404 loans — DataFusion WASM + parquet-wasm</p>
+    <p class="subtitle">2024 Q1 — 3,989,404 loans — DataFusion WASM</p>
   </header>
   <main>
     <div id="loading" class="init-panel">
-      <p id="load-status">Loading DataFusion WASM...</p>
+      <p id="load-status">Loading DataFusion WASM (21 MB gzip)...</p>
       <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
     </div>
     <div id="app" class="hidden">
       <section class="query-panel">
-        <textarea id="sql-input" rows="4">SELECT * FROM data LIMIT 10</textarea>
+        <textarea id="sql-input" rows="4">SELECT property_state, count(*) as cnt FROM data GROUP BY property_state ORDER BY cnt DESC LIMIT 10</textarea>
         <div class="query-actions">
           <button id="run-btn">Run Query</button>
-          <span class="hint">Ctrl+Enter to run</span>
+          <span class="hint">Ctrl+Enter</span>
           <span id="status" class="status"></span>
         </div>
       </section>
       <section class="results">
-        <div id="error" class="error hidden"></div>
+        <div id="error" class="error-box hidden"></div>
         <div id="result-table-wrapper" class="hidden">
           <table id="result-table"></table>
           <p id="row-count"></p>
@@ -63,53 +62,58 @@
     </div>
   </main>
 
-<script type="importmap">
-{
-  "imports": {
-    "parquet-wasm": "https://cdn.jsdelivr.net/npm/parquet-wasm@0.6.1/esm/+esm"
-  }
-}
-</script>
-
 <script type="module">
-import wasmInit, { ParquetFile } from "parquet-wasm";
-import init, { query_json } from "./wasm_query.js";
+import init, { query_parquet } from "./wasm_query.js";
 
 const R = (id) => document.getElementById(id);
 const R2_URL = "https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans.parquet";
 
-let parquetFile = null;
-let dfLoaded = false;
+let parquetBytes = null;
+let loaded = false;
 
-// Init
+// Init: load WASM + fetch parquet
 async function initAll() {
   const fill = R("progress-fill");
   const status = R("load-status");
 
-  // Load DataFusion WASM
-  status.textContent = "Loading DataFusion WASM (14 MB gzip)...";
-  fill.style.width = "10%";
+  // 1. Load WASM
+  status.textContent = "Loading DataFusion WASM (21 MB gzip)...";
+  fill.style.width = "5%";
   await init();
-  fill.style.width = "40%";
-  status.textContent = "DataFusion loaded. Opening Parquet...";
+  fill.style.width = "30%";
+  status.textContent = "DataFusion loaded. Fetching 2024 Q1 Parquet from R2 (39 MB)...";
 
-  // Open remote Parquet
-  parquetFile = await ParquetFile.fromUrl(R2_URL);
-  fill.style.width = "70%";
-  const meta = parquetFile.metadata();
-  const rows = meta.fileMetadata().numRows().toLocaleString();
-  status.textContent = `Connected — ${rows} rows available`;
+  // 2. Download Parquet from R2
+  const t0 = performance.now();
+  const resp = await fetch(R2_URL);
+  fill.style.width = "50%";
 
+  let downloaded = 0;
+  const reader = resp.body.getReader();
+  const chunks = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    downloaded += value.length;
+    fill.style.width = (30 + (downloaded / 40689130) * 50) + "%";
+    status.textContent = `Downloading... ${(downloaded / 1024 / 1024).toFixed(0)} MB / 39 MB`;
+  }
+
+  const blob = new Blob(chunks);
+  parquetBytes = new Uint8Array(await blob.arrayBuffer());
+  const ms = ((performance.now() - t0) / 1000).toFixed(1);
   fill.style.width = "100%";
-  dfLoaded = true;
+  status.textContent = `Ready — ${(parquetBytes.length / 1024 / 1024).toFixed(1)} MB Parquet loaded in ${ms}s`;
 
+  loaded = true;
   setTimeout(() => {
     R("loading").classList.add("hidden");
     R("app").classList.remove("hidden");
   }, 300);
 }
 
-// Event listeners
+// Event handlers
 R("sql-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runQuery(); }
 });
@@ -117,63 +121,75 @@ R("run-btn").addEventListener("click", runQuery);
 
 async function runQuery() {
   const sql = R("sql-input").value.trim();
-  if (!sql || !dfLoaded) return;
+  if (!sql || !loaded) return;
 
   R("error").classList.add("hidden");
   R("result-table-wrapper").classList.add("hidden");
-  R("status").textContent = "Fetching + running...";
+  R("status").textContent = "Running...";
   R("status").className = "status loading";
   R("run-btn").disabled = true;
 
   try {
     const t0 = performance.now();
-
-    // Fetch a chunk of parquet data (limited row group)
-    const wasmTable = await parquetFile.read({
-      limit: 10000,
-      columns: ["property_state", "original_upb", "original_interest_rate", "borrower_credit_score_at_origination", "loan_purpose", "original_loan_term"]
-    });
-
-    // Convert WASM table → JSON via RecordBatch IPC (or direct)
-    // Since intoIPCStream is broken for apache-arrow, we get data from the RecordBatch API
-    const readable = await parquetFile.stream({
-      limit: 10000,
-      columns: ["property_state", "original_upb", "original_interest_rate", "borrower_credit_score_at_origination", "loan_purpose", "original_loan_term"]
-    });
-
-    const reader = readable.getReader();
-    const rows = [];
-    while (true) {
-      const { value: batch, done } = await reader.read();
-      if (done) break;
-      const nRows = batch.numRows;
-      const schema = batch.schema;
-
-      // Extract column data manually — need to access the Arrow arrays in WASM
-      // For now, get column names from batch metadata
-      // RecordBatch exposes: numRows, numColumns, schema
-      // Schema exposes fields with name/type
-      const fieldNames = [];
-      // Since we can't easily iterate JS-WASM objects, we use FFI approach
-
-      batch.free();
-    }
-    reader.releaseLock();
-
+    const resultStr = await query_parquet(parquetBytes, sql);
+    const result = JSON.parse(resultStr);
     const ms = (performance.now() - t0).toFixed(0);
-    R("status").textContent = `${rows.length} rows loaded in ${ms}ms`;
+
+    const rows = result.result_rows;
+    R("status").textContent = `${rows?.toLocaleString()} rows in ${ms}ms (${(result.parquet_bytes / 1024 / 1024).toFixed(0)} MB scanned)`;
+    R("status").className = "status success";
+
+    if (!result.data || result.data.length === 0) {
+      R("error").textContent = "Query returned 0 rows.";
+      R("error").classList.remove("hidden");
+      return;
+    }
+
+    renderTable(result.data);
   } catch (e) {
     R("status").textContent = "Error";
     R("status").className = "status error";
     R("error").textContent = e.message || String(e);
     R("error").classList.remove("hidden");
+    console.error(e);
   } finally {
     R("run-btn").disabled = false;
   }
 }
 
+function renderTable(data) {
+  const keys = Object.keys(data[0]);
+
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  keys.forEach(k => {
+    const th = document.createElement("th");
+    th.textContent = k;
+    hr.appendChild(th);
+  });
+  thead.appendChild(hr);
+
+  const tbody = document.createElement("tbody");
+  const maxRows = Math.min(data.length, 1000);
+  for (let i = 0; i < maxRows; i++) {
+    const tr = document.createElement("tr");
+    keys.forEach(k => {
+      const td = document.createElement("td");
+      td.textContent = data[i][k] ?? "";
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+
+  R("result-table").innerHTML = "";
+  R("result-table").appendChild(thead);
+  R("result-table").appendChild(tbody);
+  R("row-count").textContent = `${data.length.toLocaleString()} rows` + (data.length > maxRows ? ` (showing ${maxRows})` : "");
+  R("result-table-wrapper").classList.remove("hidden");
+}
+
 initAll().catch(e => {
-  R("load-status").textContent = "Failed: " + (e.message || e);
+  R("load-status").textContent = "Startup failed: " + (e.message || e);
   R("progress-fill").style.background = "var(--error)";
   console.error(e);
 });

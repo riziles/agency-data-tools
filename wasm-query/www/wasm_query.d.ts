@@ -4,16 +4,15 @@
 export function init(): void;
 
 /**
- * Accept a JSON array of objects (each object = one row, keys = column names)
- * and run SQL against it. Returns JSON result.
+ * Accept raw Parquet bytes and run SQL against them. Returns JSON result.
  */
-export function query_json(json_rows: string, sql: string): Promise<string>;
+export function query_parquet(parquet_bytes: Uint8Array, sql: string): Promise<string>;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
-    readonly query_json: (a: number, b: number, c: number, d: number) => any;
+    readonly query_parquet: (a: number, b: number, c: number, d: number) => any;
     readonly init: () => void;
     readonly rust_zstd_wasm_shim_calloc: (a: number, b: number) => number;
     readonly rust_zstd_wasm_shim_free: (a: number) => void;
