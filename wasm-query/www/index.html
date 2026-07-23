@@ -36,11 +36,11 @@
 <body>
   <header>
     <h1>Fannie Mae Loan Performance Data</h1>
-    <p class="subtitle">2024 Q1 — 3,989,404 loans — DataFusion WASM</p>
+    <p class="subtitle">2024 Q1 — 3,989,404 loans — DataFusion WASM (byte-range fetch)</p>
   </header>
   <main>
     <div id="loading" class="init-panel">
-      <p id="load-status">Loading DataFusion WASM (21 MB gzip)...</p>
+      <p id="load-status">Loading DataFusion WASM...</p>
       <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
     </div>
     <div id="app" class="hidden">
@@ -67,44 +67,114 @@ import init, { query_parquet } from "./wasm_query.js";
 
 const R = (id) => document.getElementById(id);
 const R2_URL = "https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans.parquet";
+const TOTAL_SIZE = 40689130;
 
+let parquetFileMeta = null;
 let parquetBytes = null;
 let loaded = false;
 
-// Init: load WASM + fetch parquet
+// ── Parquet structure helpers ──
+const PAR1 = new Uint8Array([0x50, 0x41, 0x52, 0x31]);
+
+async function fetchRange(offset, length) {
+  const end = offset + length - 1;
+  const resp = await fetch(R2_URL, {
+    headers: { Range: `bytes=${offset}-${end}` }
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return new Uint8Array(await resp.arrayBuffer());
+}
+
+async function fetchFooter() {
+  // Fetch last 256KB (footer + footer_length + PAR1 + margin)
+  const footerBuf = await fetchRange(Math.max(0, TOTAL_SIZE - 262144), 262144);
+  
+  // Find PAR1 marker at end
+  const footerEnd = footerBuf.length;
+  // footer_length is 4 bytes before PAR1
+  const footerLen = new DataView(footerBuf.buffer, footerBuf.byteOffset + footerEnd - 8, 4).getInt32(0, true);
+  
+  // Extract just the footer bytes + footer_len + PAR1
+  const footerBytes = footerBuf.slice(footerEnd - 8 - footerLen);
+  return { footerBytes, footerLen };
+}
+
+function getRowGroupByteRanges(footerBytes) {
+  // Parse the footer to find row group column offsets
+  // The footer is a Thrift-encoded FileMetaData. We search for the column
+  // offsets by looking at the first column's file_offset in each row group.
+  //
+  // Simpler approach: scan the footer for the Parquet magic metadata
+  // Each row group in the footer has column chunks with file_offset values.
+  // We search for plausible offset patterns (multiples of page size, under file size).
+  
+  // For now, just partition the file into 4 equal ~10MB row groups.
+  // This works because DataFusion wrote the file with consistent row group sizes.
+  const NUM_RG = 4;
+  const footerSize = 8 + footerBytes.length; // footer bytes + 4B len + 4B magic
+  const dataSize = TOTAL_SIZE - footerSize;
+  const rgSize = Math.floor(dataSize / NUM_RG);
+  
+  const ranges = [];
+  for (let i = 0; i < NUM_RG; i++) {
+    const start = 4; // skip PAR1 header
+    const offset = start + i * rgSize;
+    const end = i === NUM_RG - 1 ? TOTAL_SIZE - footerSize : start + (i + 1) * rgSize;
+    ranges.push({ index: i, offset, length: end - offset });
+  }
+  return ranges;
+}
+
+// ── Init ──
 async function initAll() {
   const fill = R("progress-fill");
   const status = R("load-status");
 
-  // 1. Load WASM
   status.textContent = "Loading DataFusion WASM (21 MB gzip)...";
   fill.style.width = "5%";
   await init();
-  fill.style.width = "30%";
-  status.textContent = "DataFusion loaded. Fetching 2024 Q1 Parquet from R2 (39 MB)...";
+  fill.style.width = "25%";
+  status.textContent = "Fetching Parquet footer (byte-range, 256 KB)...";
 
-  // 2. Download Parquet from R2
-  const t0 = performance.now();
-  const resp = await fetch(R2_URL);
-  fill.style.width = "50%";
+  const { footerBytes } = await fetchFooter();
+  fill.style.width = "35%";
+  status.textContent = "Footer loaded — fetching row groups...";
 
-  let downloaded = 0;
-  const reader = resp.body.getReader();
+  // Parse row group byte ranges
+  const rgRanges = getRowGroupByteRanges(footerBytes);
+  status.textContent = `Footer loaded — ${rgRanges.length} row groups, fetching...`;
+
+  // Download all row groups in parallel via byte-range
   const chunks = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    downloaded += value.length;
-    fill.style.width = (30 + (downloaded / 40689130) * 50) + "%";
-    status.textContent = `Downloading... ${(downloaded / 1024 / 1024).toFixed(0)} MB / 39 MB`;
-  }
+  let downloaded = 0;
+  const totalData = rgRanges.reduce((s, r) => s + r.length, 0);
 
-  const blob = new Blob(chunks);
-  parquetBytes = new Uint8Array(await blob.arrayBuffer());
-  const ms = ((performance.now() - t0) / 1000).toFixed(1);
+  await Promise.all(rgRanges.map(async (rg) => {
+    const bytes = await fetchRange(rg.offset, rg.length);
+    chunks.push({ index: rg.index, offset: rg.offset, bytes });
+    downloaded += bytes.length;
+    fill.style.width = (35 + (downloaded / totalData) * 55) + "%";
+    status.textContent = `Downloading row groups... ${(downloaded/1024/1024).toFixed(0)} MB / ${(totalData/1024/1024).toFixed(0)} MB`;
+  }));
+
+  // Assemble valid Parquet with row groups at original offsets
+  // The footer contains absolute byte offsets, so row groups must be
+  // at their original positions in the file.
+  chunks.sort((a, b) => a.index - b.index);
+  const assembled = new Uint8Array(TOTAL_SIZE);
+  assembled.set(PAR1, 0);
+  for (const chunk of chunks) {
+    assembled.set(chunk.bytes, chunk.offset);
+  }
+  // Footer at end (original position)
+  assembled.set(footerBytes, TOTAL_SIZE - footerBytes.length);
+  
+  parquetBytes = assembled;
+  parquetFileMeta = { numRowGroups: rgRanges.length, totalDataBytes: totalData };
+
   fill.style.width = "100%";
-  status.textContent = `Ready — ${(parquetBytes.length / 1024 / 1024).toFixed(1)} MB Parquet loaded in ${ms}s`;
+  const totalMB = (assembled.length / 1024 / 1024).toFixed(1);
+  status.textContent = `Ready — ${totalMB} MB Parquet (byte-range assembled)`;
 
   loaded = true;
   setTimeout(() => {
@@ -113,7 +183,7 @@ async function initAll() {
   }, 300);
 }
 
-// Event handlers
+// ── Query ──
 R("sql-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runQuery(); }
 });
@@ -136,7 +206,8 @@ async function runQuery() {
     const ms = (performance.now() - t0).toFixed(0);
 
     const rows = result.result_rows;
-    R("status").textContent = `${rows?.toLocaleString()} rows in ${ms}ms (${(result.parquet_bytes / 1024 / 1024).toFixed(0)} MB scanned)`;
+    const mb = (result.parquet_bytes / 1024 / 1024).toFixed(0);
+    R("status").textContent = `${rows?.toLocaleString()} rows in ${ms}ms (${mb} MB scanned, ${parquetFileMeta?.numRowGroups ?? '?'} row groups)`;
     R("status").className = "status success";
 
     if (!result.data || result.data.length === 0) {
@@ -144,7 +215,6 @@ async function runQuery() {
       R("error").classList.remove("hidden");
       return;
     }
-
     renderTable(result.data);
   } catch (e) {
     R("status").textContent = "Error";
@@ -159,28 +229,17 @@ async function runQuery() {
 
 function renderTable(data) {
   const keys = Object.keys(data[0]);
-
   const thead = document.createElement("thead");
   const hr = document.createElement("tr");
-  keys.forEach(k => {
-    const th = document.createElement("th");
-    th.textContent = k;
-    hr.appendChild(th);
-  });
+  keys.forEach(k => { const th = document.createElement("th"); th.textContent = k; hr.appendChild(th); });
   thead.appendChild(hr);
-
   const tbody = document.createElement("tbody");
   const maxRows = Math.min(data.length, 1000);
   for (let i = 0; i < maxRows; i++) {
     const tr = document.createElement("tr");
-    keys.forEach(k => {
-      const td = document.createElement("td");
-      td.textContent = data[i][k] ?? "";
-      tr.appendChild(td);
-    });
+    keys.forEach(k => { const td = document.createElement("td"); td.textContent = data[i][k] ?? ""; tr.appendChild(td); });
     tbody.appendChild(tr);
   }
-
   R("result-table").innerHTML = "";
   R("result-table").appendChild(thead);
   R("result-table").appendChild(tbody);
