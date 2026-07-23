@@ -1,6 +1,12 @@
 /* tslint:disable */
 /* eslint-disable */
 
+/**
+ * Parse raw footer bytes (Thrift FileMetaData, without the 8-byte trailer)
+ * and return row group column stats as JSON.
+ */
+export function get_row_group_stats(footer_metadata_bytes: Uint8Array): string;
+
 export function init(): void;
 
 /**
@@ -12,6 +18,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly get_row_group_stats: (a: number, b: number) => [number, number, number, number];
     readonly query_parquet: (a: number, b: number, c: number, d: number) => any;
     readonly init: () => void;
     readonly rust_zstd_wasm_shim_calloc: (a: number, b: number) => number;

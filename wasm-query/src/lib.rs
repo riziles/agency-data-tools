@@ -2,12 +2,79 @@ use bytes::Bytes;
 use datafusion::datasource::MemTable;
 use datafusion::parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use datafusion::prelude::*;
+use parquet::file::footer::decode_metadata;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
 pub fn init() {
     console_error_panic_hook::set_once();
+}
+
+/// Parse raw footer bytes (Thrift FileMetaData, without the 8-byte trailer)
+/// and return row group column stats as JSON.
+#[wasm_bindgen]
+pub fn get_row_group_stats(footer_metadata_bytes: Vec<u8>) -> Result<String, JsValue> {
+    let meta = decode_metadata(&footer_metadata_bytes)
+        .map_err(|e| JsValue::from_str(&format!("Footer parse: {e}")))?;
+    let file_meta = meta.file_metadata();
+
+    let mut groups = Vec::new();
+    for (i, rg) in meta.row_groups().iter().enumerate() {
+        // Find byte range of this row group from column offsets
+        let mut min_offset = u64::MAX;
+        let mut max_end = 0u64;
+        let mut columns = Vec::new();
+
+        for col in rg.columns() {
+            let start = col.file_offset() as u64;
+            let end = start + col.compressed_size() as u64;
+            min_offset = min_offset.min(start);
+            max_end = max_end.max(end);
+
+            let path = col.column_path().string();
+            let mut col_info = serde_json::json!({
+                "path": path,
+                "offset": start,
+                "length": col.compressed_size(),
+            });
+
+            // Column statistics (min/max values for predicate pushdown)
+            if let Some(stats) = col.statistics() {
+                if let Some(min) = stats.min_bytes_opt() {
+                    col_info["min"] = serde_json::Value::String(
+                        String::from_utf8_lossy(min).to_string()
+                    );
+                }
+                if let Some(max) = stats.max_bytes_opt() {
+                    col_info["max"] = serde_json::Value::String(
+                        String::from_utf8_lossy(max).to_string()
+                    );
+                }
+                if let Some(null_count) = stats.null_count_opt() {
+                    col_info["null_count"] = serde_json::json!(null_count);
+                }
+            }
+            columns.push(col_info);
+        }
+
+        groups.push(serde_json::json!({
+            "index": i,
+            "rows": rg.num_rows(),
+            "byte_offset": min_offset,
+            "byte_length": max_end - min_offset,
+            "columns": columns,
+        }));
+    }
+
+    let result = serde_json::json!({
+        "num_rows": file_meta.num_rows(),
+        "num_row_groups": meta.num_row_groups(),
+        "created_by": file_meta.created_by().unwrap_or_default(),
+        "row_groups": groups,
+    });
+
+    Ok(result.to_string())
 }
 
 /// Accept raw Parquet bytes and run SQL against them. Returns JSON result.

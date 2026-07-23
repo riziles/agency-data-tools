@@ -1,6 +1,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
+export const get_row_group_stats: (a: number, b: number) => [number, number, number, number];
 export const query_parquet: (a: number, b: number, c: number, d: number) => any;
 export const init: () => void;
 export const rust_zstd_wasm_shim_calloc: (a: number, b: number) => number;

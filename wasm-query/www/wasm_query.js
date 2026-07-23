@@ -1,5 +1,32 @@
 /* @ts-self-types="./wasm_query.d.ts" */
 
+/**
+ * Parse raw footer bytes (Thrift FileMetaData, without the 8-byte trailer)
+ * and return row group column stats as JSON.
+ * @param {Uint8Array} footer_metadata_bytes
+ * @returns {string}
+ */
+export function get_row_group_stats(footer_metadata_bytes) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passArray8ToWasm0(footer_metadata_bytes, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.get_row_group_stats(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
 export function init() {
     wasm.init();
 }
@@ -133,7 +160,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 57519, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 57565, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm_bindgen_ff9de1b100f9ec60___convert__closures_____invoke___wasm_bindgen_ff9de1b100f9ec60___JsValue__core_7d5f0a2ba6a62c33___result__Result_____wasm_bindgen_ff9de1b100f9ec60___JsError___true_);
             return ret;
         },

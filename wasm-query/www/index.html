@@ -36,7 +36,7 @@
 <body>
   <header>
     <h1>Fannie Mae Loan Performance Data</h1>
-    <p class="subtitle">2024 Q1 — 3,989,404 loans — DataFusion WASM (byte-range fetch)</p>
+    <p class="subtitle">2024 Q1 — 3,989,404 loans — DataFusion WASM (smart fetch)</p>
   </header>
   <main>
     <div id="loading" class="init-panel">
@@ -63,66 +63,50 @@
   </main>
 
 <script type="module">
-import init, { query_parquet } from "./wasm_query.js";
+import init, { query_parquet, get_row_group_stats } from "./wasm_query.js";
 
 const R = (id) => document.getElementById(id);
 const R2_URL = "https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans.parquet";
 const TOTAL_SIZE = 40689130;
-
-let parquetFileMeta = null;
-let parquetBytes = null;
-let loaded = false;
-
-// ── Parquet structure helpers ──
 const PAR1 = new Uint8Array([0x50, 0x41, 0x52, 0x31]);
 
+let rowGroupMeta = null;  // Array of { index, rows, byte_offset, byte_length, columns }
+let footerBytes = null;
+let loaded = false;
+
+// ── Fetch helpers ──
 async function fetchRange(offset, length) {
   const end = offset + length - 1;
-  const resp = await fetch(R2_URL, {
-    headers: { Range: `bytes=${offset}-${end}` }
-  });
+  const resp = await fetch(R2_URL, { headers: { Range: `bytes=${offset}-${end}` } });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   return new Uint8Array(await resp.arrayBuffer());
 }
 
-async function fetchFooter() {
-  // Fetch last 256KB (footer + footer_length + PAR1 + margin)
-  const footerBuf = await fetchRange(Math.max(0, TOTAL_SIZE - 262144), 262144);
-  
-  // Find PAR1 marker at end
-  const footerEnd = footerBuf.length;
-  // footer_length is 4 bytes before PAR1
-  const footerLen = new DataView(footerBuf.buffer, footerBuf.byteOffset + footerEnd - 8, 4).getInt32(0, true);
-  
-  // Extract just the footer bytes + footer_len + PAR1
-  const footerBytes = footerBuf.slice(footerEnd - 8 - footerLen);
-  return { footerBytes, footerLen };
-}
+// ── Row group filtering from WHERE clause ──
+function selectRowGroups(sql) {
+  if (!rowGroupMeta) return rowGroupMeta; // fallback: all
 
-function getRowGroupByteRanges(footerBytes) {
-  // Parse the footer to find row group column offsets
-  // The footer is a Thrift-encoded FileMetaData. We search for the column
-  // offsets by looking at the first column's file_offset in each row group.
-  //
-  // Simpler approach: scan the footer for the Parquet magic metadata
-  // Each row group in the footer has column chunks with file_offset values.
-  // We search for plausible offset patterns (multiples of page size, under file size).
-  
-  // For now, just partition the file into 4 equal ~10MB row groups.
-  // This works because DataFusion wrote the file with consistent row group sizes.
-  const NUM_RG = 4;
-  const footerSize = 8 + footerBytes.length; // footer bytes + 4B len + 4B magic
-  const dataSize = TOTAL_SIZE - footerSize;
-  const rgSize = Math.floor(dataSize / NUM_RG);
-  
-  const ranges = [];
-  for (let i = 0; i < NUM_RG; i++) {
-    const start = 4; // skip PAR1 header
-    const offset = start + i * rgSize;
-    const end = i === NUM_RG - 1 ? TOTAL_SIZE - footerSize : start + (i + 1) * rgSize;
-    ranges.push({ index: i, offset, length: end - offset });
+  // Extract WHERE clause conditions like "col = 'val'"
+  const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+GROUP|\s+ORDER|\s+LIMIT|\s*$)/is);
+  if (!whereMatch) return rowGroupMeta; // no filter → all row groups
+
+  const clause = whereMatch[1];
+  // Parse simple equality: col = 'val' or col = "val"
+  const eqMatches = [...clause.matchAll(/(\w+)\s*=\s*'([^']+)'/g)];
+  if (eqMatches.length === 0) return rowGroupMeta; // can't parse → all
+
+  const matching = [];
+  for (const rg of rowGroupMeta) {
+    let allMatch = true;
+    for (const [, col, val] of eqMatches) {
+      const colStats = rg.columns.find(c => c.path === col);
+      if (!colStats || colStats.min === undefined) { allMatch = false; break; }
+      // String comparison: val must be >= min and <= max
+      if (val < colStats.min || val > colStats.max) { allMatch = false; break; }
+    }
+    if (allMatch) matching.push(rg);
   }
-  return ranges;
+  return matching.length > 0 ? matching : rowGroupMeta; // if nothing matches, fall back to all
 }
 
 // ── Init ──
@@ -133,49 +117,27 @@ async function initAll() {
   status.textContent = "Loading DataFusion WASM (21 MB gzip)...";
   fill.style.width = "5%";
   await init();
-  fill.style.width = "25%";
-  status.textContent = "Fetching Parquet footer (byte-range, 256 KB)...";
+  fill.style.width = "20%";
 
-  const { footerBytes } = await fetchFooter();
+  // 1. Fetch footer + PAR1 header to create a minimal parquet for stats
+  status.textContent = "Fetching footer (256 KB)...";
+  const footerBuf = await fetchRange(Math.max(0, TOTAL_SIZE - 262144), 262144);
+  const footerEnd = footerBuf.length;
+  const footerLen = new DataView(footerBuf.buffer, footerBuf.byteOffset + footerEnd - 8, 4).getInt32(0, true);
+  footerBytes = footerBuf.slice(footerEnd - 8 - footerLen);
   fill.style.width = "35%";
-  status.textContent = "Footer loaded — fetching row groups...";
 
-  // Parse row group byte ranges
-  const rgRanges = getRowGroupByteRanges(footerBytes);
-  status.textContent = `Footer loaded — ${rgRanges.length} row groups, fetching...`;
+  // 2. Parse stats from raw footer (strip the 8-byte footer_len+PAR1 trailer)
+  status.textContent = "Parsing column statistics...";
+  const metadataBytes = footerBytes.slice(0, footerBytes.length - 8);
+  const statsJson = get_row_group_stats(metadataBytes);
+  const stats = JSON.parse(statsJson);
+  rowGroupMeta = stats.row_groups;
+  fill.style.width = "50%";
 
-  // Download all row groups in parallel via byte-range
-  const chunks = [];
-  let downloaded = 0;
-  const totalData = rgRanges.reduce((s, r) => s + r.length, 0);
-
-  await Promise.all(rgRanges.map(async (rg) => {
-    const bytes = await fetchRange(rg.offset, rg.length);
-    chunks.push({ index: rg.index, offset: rg.offset, bytes });
-    downloaded += bytes.length;
-    fill.style.width = (35 + (downloaded / totalData) * 55) + "%";
-    status.textContent = `Downloading row groups... ${(downloaded/1024/1024).toFixed(0)} MB / ${(totalData/1024/1024).toFixed(0)} MB`;
-  }));
-
-  // Assemble valid Parquet with row groups at original offsets
-  // The footer contains absolute byte offsets, so row groups must be
-  // at their original positions in the file.
-  chunks.sort((a, b) => a.index - b.index);
-  const assembled = new Uint8Array(TOTAL_SIZE);
-  assembled.set(PAR1, 0);
-  for (const chunk of chunks) {
-    assembled.set(chunk.bytes, chunk.offset);
-  }
-  // Footer at end (original position)
-  assembled.set(footerBytes, TOTAL_SIZE - footerBytes.length);
-  
-  parquetBytes = assembled;
-  parquetFileMeta = { numRowGroups: rgRanges.length, totalDataBytes: totalData };
+  status.textContent = `Ready — ${stats.num_rows.toLocaleString()} rows, ${stats.num_row_groups} row groups. Column stats available for smart fetch.`;
 
   fill.style.width = "100%";
-  const totalMB = (assembled.length / 1024 / 1024).toFixed(1);
-  status.textContent = `Ready — ${totalMB} MB Parquet (byte-range assembled)`;
-
   loaded = true;
   setTimeout(() => {
     R("loading").classList.add("hidden");
@@ -195,19 +157,50 @@ async function runQuery() {
 
   R("error").classList.add("hidden");
   R("result-table-wrapper").classList.add("hidden");
-  R("status").textContent = "Running...";
+  R("status").textContent = "Selecting row groups...";
   R("status").className = "status loading";
   R("run-btn").disabled = true;
 
   try {
     const t0 = performance.now();
-    const resultStr = await query_parquet(parquetBytes, sql);
+
+    // Filter row groups by WHERE clause
+    const selectedRGs = selectRowGroups(sql);
+    const totalRGs = rowGroupMeta.length;
+    const skipped = totalRGs - selectedRGs.length;
+
+    // Download selected row groups
+    R("status").textContent = `Downloading ${selectedRGs.length}/${totalRGs} row groups...`;
+    const chunks = [];
+    let downloaded = 0;
+    const totalDownload = selectedRGs.reduce((s, rg) => s + rg.byte_length, 0);
+
+    await Promise.all(selectedRGs.map(async (rg) => {
+      const bytes = await fetchRange(rg.byte_offset, rg.byte_length);
+      chunks.push({ offset: rg.byte_offset, bytes });
+      downloaded += bytes.length;
+    }));
+
+    // Assemble at original offsets
+    const assembled = new Uint8Array(TOTAL_SIZE);
+    assembled.set(PAR1, 0);
+    for (const c of chunks) assembled.set(c.bytes, c.offset);
+    assembled.set(footerBytes, TOTAL_SIZE - footerBytes.length);
+
+    const fetchMs = (performance.now() - t0).toFixed(0);
+    const fetchMB = (totalDownload / (1024 * 1024)).toFixed(1);
+    R("status").textContent = `Fetched ${fetchMB} MB in ${fetchMs}ms${skipped ? ` (skipped ${skipped} row groups!)` : ''} — querying...`;
+
+    // Run query
+    const qStart = performance.now();
+    const resultStr = await query_parquet(assembled, sql);
     const result = JSON.parse(resultStr);
-    const ms = (performance.now() - t0).toFixed(0);
+    const queryMs = (performance.now() - qStart).toFixed(0);
 
     const rows = result.result_rows;
-    const mb = (result.parquet_bytes / 1024 / 1024).toFixed(0);
-    R("status").textContent = `${rows?.toLocaleString()} rows in ${ms}ms (${mb} MB scanned, ${parquetFileMeta?.numRowGroups ?? '?'} row groups)`;
+    R("status").textContent =
+      `${rows?.toLocaleString()} rows in ${queryMs}ms ` +
+      `(${fetchMB} MB fetched${skipped ? ', ' + skipped + ' RGs skipped' : ''})`;
     R("status").className = "status success";
 
     if (!result.data || result.data.length === 0) {
