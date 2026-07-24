@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<script type="module">
+import init, { query_partial, get_row_group_stats } from "./wasm_query.js";
+await init();
+
+const url = "https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans-sorted.parquet";
+const TOTAL = 57909647;
+const PAR1 = new Uint8Array([0x50,0x41,0x52,0x31]);
+
+// Step 1: Get footer stats
+const footerResp = await fetch(url, {headers:{Range:`bytes=${TOTAL-262144}-${TOTAL-1}`}});
+const fb = new Uint8Array(await footerResp.arrayBuffer());
+const fl = new DataView(fb.buffer,fb.byteOffset+fb.length-8,4).getInt32(0,true);
+const footerBytes = fb.slice(fb.length-8-fl);
+const metaBytes = footerBytes.slice(0,-8);
+const stats = JSON.parse(get_row_group_stats(metaBytes));
+const pre = document.createElement("pre");
+pre.textContent = `Stats: ${stats.num_rows} rows, ${stats.num_row_groups} RGs\n\n`;
+stats.row_groups.forEach(rg => {
+  pre.textContent += `RG${rg.index}: offset=${rg.byte_offset} len=${rg.byte_length}\n`;
+});
+
+// Helper: download chunks, assemble for query_partial
+async function testQuery(label, rgIndices) {
+  const selChunks = [{ offset: 0, len: 4 }];
+  for (const i of rgIndices) {
+    const rg = stats.row_groups[i];
+    selChunks.push({ offset: rg.byte_offset, len: rg.byte_length });
+  }
+  selChunks.push({ offset: TOTAL - footerBytes.length, len: footerBytes.length });
+
+  // Download
+  const dataChunks = [];
+  for (const c of selChunks) {
+    const bytes = c.offset === 0 ? PAR1 :
+      c.offset === TOTAL - footerBytes.length ? footerBytes :
+      new Uint8Array(await (await fetch(url, {headers:{Range:`bytes=${c.offset}-${c.offset+c.len-1}`}})).arrayBuffer());
+    dataChunks.push({ offset: c.offset, bytes });
+    pre.textContent += `  Downloaded ${c.offset==0?'PAR1':c.offset===TOTAL-footerBytes.length?'footer':'RG'}: ${bytes.length} bytes\n`;
+  }
+
+  // Assemble
+  const totalLen = dataChunks.reduce((s,c)=>s+c.bytes.length,0);
+  const data = new Uint8Array(totalLen);
+  const offsets = [], lengths = [];
+  let pos = 0;
+  for (const c of dataChunks) {
+    data.set(c.bytes, pos);
+    offsets.push(c.offset);
+    lengths.push(c.bytes.length);
+    pos += c.bytes.length;
+  }
+
+  pre.textContent += `\nCalling query_partial(${rgIndices})...\n`;
+  try {
+    const r = JSON.parse(await query_partial(data, offsets, lengths, TOTAL, rgIndices, "SELECT count(*) FROM data"));
+    pre.textContent += `  ${label}: ${r.result_rows} rows ✅\n`;
+  } catch(e) {
+    pre.textContent += `  ${label} FAILED: ${e.message} ❌\n`;
+  }
+}
+
+await testQuery("ALL 4 RGs", [0,1,2,3]);
+await testQuery("RG2 only", [2]);
+await testQuery("RG0 only", [0]);
+
+document.body.appendChild(pre);
+</script>
