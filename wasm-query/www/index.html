@@ -63,7 +63,7 @@
   </main>
 
 <script type="module">
-import init, { query_parquet, get_row_group_stats } from "./wasm_query.js";
+import init, { query_parquet, query_parquet_rgs, get_row_group_stats } from "./wasm_query.js";
 
 const R = (id) => document.getElementById(id);
 const R2_URL = "https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans-sorted.parquet";
@@ -190,9 +190,11 @@ async function runQuery() {
     const fetchMs = (performance.now() - t0).toFixed(0);
     R("status").textContent = `Fetched ${downloadMB} MB in ${fetchMs}ms${skipped ? ` (skipping RG ${selectedRGs[0]?.index > 0 ? '0-'+(selectedRGs[0].index-1) : 'none'})` : ''} — querying...`;
 
-    // Run query
+    // Run query — use row-group-aware path if we filtered
     const qStart = performance.now();
-    const resultStr = await query_parquet(assembled, sql);
+    const resultStr = skipped > 0
+      ? await query_parquet_rgs(assembled, selectedRGs.map(rg => rg.index), sql)
+      : await query_parquet(assembled, sql);
     const result = JSON.parse(resultStr);
     const queryMs = (performance.now() - qStart).toFixed(0);
 

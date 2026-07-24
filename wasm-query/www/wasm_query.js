@@ -45,6 +45,25 @@ export function query_parquet(parquet_bytes, sql) {
     const ret = wasm.query_parquet(ptr0, len0, ptr1, len1);
     return ret;
 }
+
+/**
+ * Like query_parquet but only reads specific row groups (0-indexed).
+ * Used for smart fetch — skip row groups that don't match WHERE clause.
+ * @param {Uint8Array} parquet_bytes
+ * @param {Uint32Array} rgs
+ * @param {string} sql
+ * @returns {Promise<string>}
+ */
+export function query_parquet_rgs(parquet_bytes, rgs, sql) {
+    const ptr0 = passArray8ToWasm0(parquet_bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArray32ToWasm0(rgs, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(sql, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.query_parquet_rgs(ptr0, len0, ptr1, len1, ptr2, len2);
+    return ret;
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
@@ -160,7 +179,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 57565, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 57568, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm_bindgen_ff9de1b100f9ec60___convert__closures_____invoke___wasm_bindgen_ff9de1b100f9ec60___JsValue__core_7d5f0a2ba6a62c33___result__Result_____wasm_bindgen_ff9de1b100f9ec60___JsError___true_);
             return ret;
         },
@@ -223,6 +242,14 @@ function getStringFromWasm0(ptr, len) {
     return decodeText(ptr >>> 0, len);
 }
 
+let cachedUint32ArrayMemory0 = null;
+function getUint32ArrayMemory0() {
+    if (cachedUint32ArrayMemory0 === null || cachedUint32ArrayMemory0.byteLength === 0) {
+        cachedUint32ArrayMemory0 = new Uint32Array(wasm.memory.buffer);
+    }
+    return cachedUint32ArrayMemory0;
+}
+
 let cachedUint8ArrayMemory0 = null;
 function getUint8ArrayMemory0() {
     if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
@@ -270,6 +297,13 @@ function makeMutClosure(arg0, arg1, f) {
     };
     CLOSURE_DTORS.register(real, state, state);
     return real;
+}
+
+function passArray32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getUint32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
 }
 
 function passArray8ToWasm0(arg, malloc) {
@@ -357,6 +391,7 @@ function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     wasmModule = module;
     cachedDataViewMemory0 = null;
+    cachedUint32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     wasm.__wbindgen_start();
     return wasm;

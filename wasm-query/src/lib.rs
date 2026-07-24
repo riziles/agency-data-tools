@@ -27,9 +27,9 @@ pub fn get_row_group_stats(footer_metadata_bytes: Vec<u8>) -> Result<String, JsV
         let mut columns = Vec::new();
 
         for col in rg.columns() {
-            let start = col.file_offset() as u64;
+            // data_page_offset is the absolute file offset; file_offset may be relative
+            let start = col.data_page_offset() as u64;
             let end = start + col.compressed_size() as u64;
-            // Skip zero-length padding columns that drag offset to 0
             if col.compressed_size() > 0 {
                 min_offset = min_offset.min(start);
                 max_end = max_end.max(end);
@@ -83,11 +83,27 @@ pub fn get_row_group_stats(footer_metadata_bytes: Vec<u8>) -> Result<String, JsV
 /// Accept raw Parquet bytes and run SQL against them. Returns JSON result.
 #[wasm_bindgen]
 pub async fn query_parquet(parquet_bytes: Vec<u8>, sql: &str) -> Result<String, JsValue> {
+    query_parquet_inner(parquet_bytes, None, sql).await
+}
+
+/// Like query_parquet but only reads specific row groups (0-indexed).
+/// Used for smart fetch — skip row groups that don't match WHERE clause.
+#[wasm_bindgen]
+pub async fn query_parquet_rgs(parquet_bytes: Vec<u8>, rgs: Vec<usize>, sql: &str) -> Result<String, JsValue> {
+    query_parquet_inner(parquet_bytes, Some(rgs), sql).await
+}
+
+async fn query_parquet_inner(parquet_bytes: Vec<u8>, rgs: Option<Vec<usize>>, sql: &str) -> Result<String, JsValue> {
     let bytes_len = parquet_bytes.len();
     let bytes = Bytes::from(parquet_bytes);
 
-    let builder = ParquetRecordBatchReaderBuilder::try_new(bytes)
+    let mut builder = ParquetRecordBatchReaderBuilder::try_new(bytes)
         .map_err(|e| JsValue::from_str(&format!("Parquet open: {e}")))?;
+
+    // Only read specified row groups (skip zero-filled gaps)
+    if let Some(indices) = &rgs {
+        builder = builder.with_row_groups(indices.clone());
+    }
 
     let schema = builder.schema().clone();
     let batches: Vec<_> = builder
