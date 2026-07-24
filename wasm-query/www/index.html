@@ -164,32 +164,31 @@ async function runQuery() {
   try {
     const t0 = performance.now();
 
-    // Filter row groups by WHERE clause
+    // Download selected row groups as a contiguous span from first RG to EOF.
+    // This ensures the footer is correctly positioned — no sparse assembly needed.
     const selectedRGs = selectRowGroups(sql);
     const totalRGs = rowGroupMeta.length;
     const skipped = totalRGs - selectedRGs.length;
 
-    // Download selected row groups
-    R("status").textContent = `Downloading ${selectedRGs.length}/${totalRGs} row groups...`;
-    const chunks = [];
-    let downloaded = 0;
-    const totalDownload = selectedRGs.reduce((s, rg) => s + rg.byte_length, 0);
+    R("status").textContent = `Downloading from RG${selectedRGs[0]?.index ?? 0} to EOF...`;
+    R("status").className = "status loading";
 
-    await Promise.all(selectedRGs.map(async (rg) => {
-      const bytes = await fetchRange(rg.byte_offset, rg.byte_length);
-      chunks.push({ offset: rg.byte_offset, bytes });
-      downloaded += bytes.length;
-    }));
+    // Download from first needed byte to end of file (includes all row groups + footer)
+    const firstOffset = selectedRGs[0].byte_offset;
+    const downloadLen = TOTAL_SIZE - firstOffset;
+    const downloadMB = (downloadLen / (1024 * 1024)).toFixed(1);
+    R("status").textContent = `Downloading ${downloadMB} MB from offset ${firstOffset}...`;
 
-    // Assemble at original offsets
-    const assembled = new Uint8Array(TOTAL_SIZE);
+    const tailBytes = await fetchRange(firstOffset, downloadLen);
+
+    // Assemble: PAR1 + zero-padding + tail (footer correctly at end)
+    const assembled = new Uint8Array(firstOffset + tailBytes.length);
     assembled.set(PAR1, 0);
-    for (const c of chunks) assembled.set(c.bytes, c.offset);
-    assembled.set(footerBytes, TOTAL_SIZE - footerBytes.length);
+    assembled.set(tailBytes, firstOffset);
+    // No footer splicing needed — footer is at the end of tailBytes
 
     const fetchMs = (performance.now() - t0).toFixed(0);
-    const fetchMB = (totalDownload / (1024 * 1024)).toFixed(1);
-    R("status").textContent = `Fetched ${fetchMB} MB in ${fetchMs}ms${skipped ? ` (skipped ${skipped} row groups!)` : ''} — querying...`;
+    R("status").textContent = `Fetched ${downloadMB} MB in ${fetchMs}ms${skipped ? ` (skipping RG ${selectedRGs[0]?.index > 0 ? '0-'+(selectedRGs[0].index-1) : 'none'})` : ''} — querying...`;
 
     // Run query
     const qStart = performance.now();
@@ -200,7 +199,7 @@ async function runQuery() {
     const rows = result.result_rows;
     R("status").textContent =
       `${rows?.toLocaleString()} rows in ${queryMs}ms ` +
-      `(${fetchMB} MB fetched${skipped ? ', ' + skipped + ' RGs skipped' : ''})`;
+      `(${downloadMB} MB fetched${skipped ? ', from RG' + selectedRGs[0]?.index : ''})`;
     R("status").className = "status success";
 
     if (!result.data || result.data.length === 0) {
