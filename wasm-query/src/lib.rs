@@ -29,8 +29,10 @@ pub fn get_row_group_stats(footer_metadata_bytes: Vec<u8>) -> Result<String, JsV
         let mut columns = Vec::new();
 
         for col in rg.columns() {
-            // data_page_offset is the absolute file offset; file_offset may be relative
-            let start = col.data_page_offset() as u64;
+            // Use the earliest page offset (dictionary pages come before data pages)
+            let start = col.dictionary_page_offset()
+                .map(|o| o as u64)
+                .unwrap_or_else(|| col.data_page_offset() as u64);
             let end = start + col.compressed_size() as u64;
             if col.compressed_size() > 0 {
                 min_offset = min_offset.min(start);
