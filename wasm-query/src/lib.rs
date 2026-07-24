@@ -161,9 +161,24 @@ pub async fn query_partial(
 
     let reader = HybridReader { chunks, file_size: file_size as u64 };
 
-    let builder = ParquetRecordBatchReaderBuilder::try_new(reader)
-        .map_err(|e| JsValue::from_str(&format!("Open: {e}")))?
-        .with_row_groups(rgs);
+    // Extract column names from SQL to limit what we read
+    let needed_cols = extract_columns_from_sql(sql);
+    let mut builder = ParquetRecordBatchReaderBuilder::try_new(reader)
+        .map_err(|e| JsValue::from_str(&format!("Open: {e}")))?;
+
+    // Apply column projection if SQL references specific columns
+    if let Some(ref cols) = needed_cols {
+        let parquet_schema = builder.parquet_schema().clone();
+        let indices: Vec<usize> = cols.iter().filter_map(|name| {
+            parquet_schema.columns().iter().position(|c| c.path().string() == *name)
+        }).collect();
+        if !indices.is_empty() && indices.len() < parquet_schema.columns().len() {
+            let mask = parquet::arrow::ProjectionMask::leaves(&parquet_schema, indices);
+            builder = builder.with_projection(mask);
+        }
+    }
+
+    builder = builder.with_row_groups(rgs);
 
     let schema = builder.schema().clone();
     let batches: Vec<_> = builder
@@ -198,6 +213,56 @@ pub async fn query_partial(
         "result_columns": result_cols,
         "data": json,
     }).to_string())
+}
+
+/// Simple SQL column extractor — looks for column names in SELECT and WHERE clauses.
+/// Returns None for SELECT * queries (meaning all columns needed).
+/// Returns a single dummy column for COUNT(*) to minimize memory usage.
+fn extract_columns_from_sql(sql: &str) -> Option<Vec<String>> {
+    let sql_upper = sql.to_uppercase();
+    // If SELECT *, return None (need all columns)
+    if sql_upper.contains("SELECT *") {
+        return None;
+    }
+    // Extract column names from SELECT clause
+    let select_start = sql_upper.find("SELECT").unwrap_or(0) + 6;
+    let from_pos = sql_upper.find("FROM").unwrap_or(sql.len());
+    let select_clause = &sql[select_start..from_pos];
+    
+    let mut cols = Vec::new();
+    // Split by comma, extract identifiers
+    for part in select_clause.split(',') {
+        let part = part.trim();
+        // Skip expressions like "count(*) as cnt", "SUM(x)", etc.
+        if part.contains('(') { continue; }
+        // Get alias or column name
+        let name = if let Some(as_pos) = part.to_uppercase().rfind(" AS ") {
+            part[as_pos + 4..].trim().to_lowercase()
+        } else {
+            part.split('.').last().unwrap_or(part).trim().to_lowercase()
+        };
+        if !name.is_empty() && name != "*" {
+            cols.push(name);
+        }
+    }
+    
+    // Also extract columns from WHERE clause
+    if let Some(where_pos) = sql_upper.find("WHERE") {
+        let where_clause = &sql[where_pos + 5..];
+        for word in where_clause.split_whitespace() {
+            let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+            if !clean.is_empty() && clean.chars().next().map_or(false, |c| c.is_alphabetic()) {
+                let lower = clean.to_lowercase();
+                if !cols.contains(&lower) && lower != "and" && lower != "or" && lower != "not" 
+                   && lower != "null" && lower != "true" && lower != "false" && lower != "in"
+                   && lower != "like" && lower != "between" {
+                    cols.push(lower);
+                }
+            }
+        }
+    }
+    
+    if cols.is_empty() { None } else { Some(cols) }
 }
 
 /// Accept raw Parquet bytes and run SQL against them. Returns JSON result.
