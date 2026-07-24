@@ -63,7 +63,7 @@
   </main>
 
 <script type="module">
-import init, { query_parquet, query_parquet_rgs, get_row_group_stats } from "./wasm_query.js";
+import init, { query_parquet, query_partial, get_row_group_stats } from "./wasm_query.js";
 
 const R = (id) => document.getElementById(id);
 const R2_URL = "https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans-sorted.parquet";
@@ -164,44 +164,62 @@ async function runQuery() {
   try {
     const t0 = performance.now();
 
-    // Download selected row groups as a contiguous span from first RG to EOF.
-    // This ensures the footer is correctly positioned — no sparse assembly needed.
+    // Download header + selected row groups + footer as individual chunks.
+    // Bundle into a flat buffer with offset metadata for HybridReader on WASM side.
     const selectedRGs = selectRowGroups(sql);
     const totalRGs = rowGroupMeta.length;
     const skipped = totalRGs - selectedRGs.length;
 
-    R("status").textContent = `Downloading from RG${selectedRGs[0]?.index ?? 0} to EOF...`;
+    R("status").textContent = `Downloading ${selectedRGs.length}/${totalRGs} row groups...`;
     R("status").className = "status loading";
 
-    // Download from first needed byte to end of file (includes all row groups + footer)
-    const firstOffset = selectedRGs[0].byte_offset;
-    const downloadLen = TOTAL_SIZE - firstOffset;
-    const downloadMB = (downloadLen / (1024 * 1024)).toFixed(1);
-    R("status").textContent = `Downloading ${downloadMB} MB from offset ${firstOffset}...`;
+    // Build chunk list: PAR1 header, each selected RG, footer
+    const chunkDefs = [
+      { offset: 0, bytes: PAR1 },  // PAR1 at position 0
+    ];
+    for (const rg of selectedRGs) {
+      chunkDefs.push({ offset: rg.byte_offset, pending: true, length: rg.byte_length });
+    }
+    chunkDefs.push({ offset: TOTAL_SIZE - footerBytes.length, bytes: footerBytes });
 
-    const tailBytes = await fetchRange(firstOffset, downloadLen);
+    // Download row group chunks in parallel
+    const dlStart = performance.now();
+    let totalDL = 0;
+    await Promise.all(chunkDefs.filter(c => c.pending).map(async (c) => {
+      c.bytes = await fetchRange(c.offset, c.length);
+      totalDL += c.bytes.length;
+    }));
 
-    // Assemble: PAR1 + zero-padding + tail (footer correctly at end)
-    const assembled = new Uint8Array(firstOffset + tailBytes.length);
-    assembled.set(PAR1, 0);
-    assembled.set(tailBytes, firstOffset);
-    // No footer splicing needed — footer is at the end of tailBytes
+    // Sort by offset and concatenate
+    chunkDefs.sort((a, b) => a.offset - b.offset);
+    const totalDataLen = chunkDefs.reduce((s, c) => s + c.bytes.length, 0);
+    const data = new Uint8Array(totalDataLen);
+    const offsets = [];
+    const lengths = [];
+    let pos = 0;
+    for (const c of chunkDefs) {
+      data.set(c.bytes, pos);
+      offsets.push(c.offset);
+      lengths.push(c.bytes.length);
+      pos += c.bytes.length;
+    }
 
-    const fetchMs = (performance.now() - t0).toFixed(0);
-    R("status").textContent = `Fetched ${downloadMB} MB in ${fetchMs}ms${skipped ? ` (skipping RG ${selectedRGs[0]?.index > 0 ? '0-'+(selectedRGs[0].index-1) : 'none'})` : ''} — querying...`;
+    const fetchMs = (performance.now() - dlStart).toFixed(0);
+    const fetchMB = (totalDL / (1024 * 1024)).toFixed(1);
+    R("status").textContent = `Fetched ${fetchMB} MB in ${fetchMs}ms${skipped ? ` (${selectedRGs.length}/${totalRGs} RGs)` : ''} — querying...`;
 
-    // Run query — use row-group-aware path if we filtered
+    // Run query — use chunk-based path when we filtered row groups
     const qStart = performance.now();
     const resultStr = skipped > 0
-      ? await query_parquet_rgs(assembled, selectedRGs.map(rg => rg.index), sql)
-      : await query_parquet(assembled, sql);
+      ? await query_partial(data, offsets, lengths, TOTAL_SIZE, selectedRGs.map(rg => rg.index), sql)
+      : await query_parquet(data, sql);
     const result = JSON.parse(resultStr);
     const queryMs = (performance.now() - qStart).toFixed(0);
 
     const rows = result.result_rows;
     R("status").textContent =
       `${rows?.toLocaleString()} rows in ${queryMs}ms ` +
-      `(${downloadMB} MB fetched${skipped ? ', from RG' + selectedRGs[0]?.index : ''})`;
+      `(${fetchMB} MB fetched${skipped ? `, ${selectedRGs.length}/${totalRGs} RGs` : ''})`;
     R("status").className = "status success";
 
     if (!result.data || result.data.length === 0) {

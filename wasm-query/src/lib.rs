@@ -2,7 +2,9 @@ use bytes::Bytes;
 use datafusion::datasource::MemTable;
 use datafusion::parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use datafusion::prelude::*;
-use parquet::file::footer::decode_metadata;
+use parquet::errors::ParquetError;
+use parquet::file::metadata::ParquetMetaDataReader;
+use parquet::file::reader::{ChunkReader, Length};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -15,7 +17,7 @@ pub fn init() {
 /// and return row group column stats as JSON.
 #[wasm_bindgen]
 pub fn get_row_group_stats(footer_metadata_bytes: Vec<u8>) -> Result<String, JsValue> {
-    let meta = decode_metadata(&footer_metadata_bytes)
+    let meta = ParquetMetaDataReader::decode_metadata(&footer_metadata_bytes)
         .map_err(|e| JsValue::from_str(&format!("Footer parse: {e}")))?;
     let file_meta = meta.file_metadata();
 
@@ -78,6 +80,122 @@ pub fn get_row_group_stats(footer_metadata_bytes: Vec<u8>) -> Result<String, JsV
     });
 
     Ok(result.to_string())
+}
+
+// ── Custom ChunkReader for partial downloads ──
+
+/// Maps file offsets to downloaded byte chunks.
+/// file_size is the total virtual file size (footer positioned at end).
+struct HybridReader {
+    chunks: Vec<(u64, Bytes)>,
+    file_size: u64,
+}
+
+impl Length for HybridReader {
+    fn len(&self) -> u64 {
+        self.file_size
+    }
+}
+
+impl ChunkReader for HybridReader {
+    type T = std::io::Cursor<Bytes>;
+
+    fn get_read(&self, start: u64) -> parquet::errors::Result<Self::T> {
+        let data = self.get_bytes(start, 1)?;
+        // Find the chunk that contains start and re-slice
+        for (offset, chunk) in &self.chunks {
+            let end = *offset + chunk.len() as u64;
+            if start >= *offset && start < end {
+                let local = (start - offset) as usize;
+                return Ok(std::io::Cursor::new(chunk.slice(local..)));
+            }
+        }
+        Err(ParquetError::General(format!("get_read: offset {start} not found")))
+    }
+
+    fn get_bytes(&self, start: u64, length: usize) -> parquet::errors::Result<Bytes> {
+        for (offset, data) in &self.chunks {
+            let chunk_end = *offset + data.len() as u64;
+            if start >= *offset && start + length as u64 <= chunk_end {
+                let local = (start - offset) as usize;
+                return Ok(data.slice(local..local + length));
+            }
+        }
+        Err(ParquetError::General(format!(
+            "get_bytes: range {}-{} not in chunks", start, start + length as u64
+        )))
+    }
+}
+
+/// Query selected row groups using byte-range chunks (no zero-padded buffer).
+/// JS passes: concatenated data, sorted offsets, total virtual file size,
+/// row group indices to read, and SQL.
+#[wasm_bindgen]
+pub async fn query_partial(
+    data: Vec<u8>,
+    offsets: Vec<u32>,
+    lengths: Vec<u32>,
+    file_size: u32,
+    rgs: Vec<usize>,
+    sql: &str,
+) -> Result<String, JsValue> {
+    // Split data into chunks based on offsets
+    let n = offsets.len();
+    if n == 0 {
+        return Err(JsValue::from_str("No chunks"));
+    }
+    let mut chunks = Vec::with_capacity(n);
+    let mut pos = 0usize;
+    for i in 0..n {
+        let off = offsets[i] as u64;
+        let len = lengths[i] as usize;
+        if pos + len > data.len() {
+            return Err(JsValue::from_str(&format!("Data too short: need {} have {}", pos + len, data.len())));
+        }
+        chunks.push((off, Bytes::copy_from_slice(&data[pos..pos + len])));
+        pos += len;
+    }
+    let total_bytes = pos;
+
+    let reader = HybridReader { chunks, file_size: file_size as u64 };
+
+    let builder = ParquetRecordBatchReaderBuilder::try_new(reader)
+        .map_err(|e| JsValue::from_str(&format!("Open: {e}")))?
+        .with_row_groups(rgs);
+
+    let schema = builder.schema().clone();
+    let batches: Vec<_> = builder
+        .build()
+        .map_err(|e| JsValue::from_str(&format!("Build: {e}")))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| JsValue::from_str(&format!("Read: {e}")))?;
+
+    let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+
+    let ctx = SessionContext::new();
+    let table = Arc::new(
+        MemTable::try_new(schema, vec![batches])
+            .map_err(|e| JsValue::from_str(&format!("Table: {e}")))?,
+    );
+    ctx.register_table("data", table)
+        .map_err(|e| JsValue::from_str(&format!("Register: {e}")))?;
+
+    let df = ctx.sql(sql).await
+        .map_err(|e| JsValue::from_str(&format!("SQL: {e}")))?;
+    let results = df.collect().await
+        .map_err(|e| JsValue::from_str(&format!("Query: {e}")))?;
+
+    let result_rows: usize = results.iter().map(|b| b.num_rows()).sum();
+    let result_cols = results.first().map(|b| b.num_columns()).unwrap_or(0);
+    let json = batches_to_json(&results);
+
+    Ok(serde_json::json!({
+        "parquet_bytes": total_bytes,
+        "input_rows": total_rows,
+        "result_rows": result_rows,
+        "result_columns": result_cols,
+        "data": json,
+    }).to_string())
 }
 
 /// Accept raw Parquet bytes and run SQL against them. Returns JSON result.

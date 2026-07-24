@@ -64,6 +64,33 @@ export function query_parquet_rgs(parquet_bytes, rgs, sql) {
     const ret = wasm.query_parquet_rgs(ptr0, len0, ptr1, len1, ptr2, len2);
     return ret;
 }
+
+/**
+ * Query selected row groups using byte-range chunks (no zero-padded buffer).
+ * JS passes: concatenated data, sorted offsets, total virtual file size,
+ * row group indices to read, and SQL.
+ * @param {Uint8Array} data
+ * @param {Uint32Array} offsets
+ * @param {Uint32Array} lengths
+ * @param {number} file_size
+ * @param {Uint32Array} rgs
+ * @param {string} sql
+ * @returns {Promise<string>}
+ */
+export function query_partial(data, offsets, lengths, file_size, rgs, sql) {
+    const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArray32ToWasm0(offsets, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArray32ToWasm0(lengths, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ptr3 = passArray32ToWasm0(rgs, wasm.__wbindgen_malloc);
+    const len3 = WASM_VECTOR_LEN;
+    const ptr4 = passStringToWasm0(sql, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len4 = WASM_VECTOR_LEN;
+    const ret = wasm.query_partial(ptr0, len0, ptr1, len1, ptr2, len2, file_size, ptr3, len3, ptr4, len4);
+    return ret;
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
@@ -179,7 +206,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 57568, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 57547, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm_bindgen_ff9de1b100f9ec60___convert__closures_____invoke___wasm_bindgen_ff9de1b100f9ec60___JsValue__core_7d5f0a2ba6a62c33___result__Result_____wasm_bindgen_ff9de1b100f9ec60___JsError___true_);
             return ret;
         },
