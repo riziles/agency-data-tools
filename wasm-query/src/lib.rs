@@ -29,8 +29,11 @@ pub fn get_row_group_stats(footer_metadata_bytes: Vec<u8>) -> Result<String, JsV
         for col in rg.columns() {
             let start = col.file_offset() as u64;
             let end = start + col.compressed_size() as u64;
-            min_offset = min_offset.min(start);
-            max_end = max_end.max(end);
+            // Skip zero-length padding columns that drag offset to 0
+            if col.compressed_size() > 0 {
+                min_offset = min_offset.min(start);
+                max_end = max_end.max(end);
+            }
 
             let path = col.column_path().string();
             let mut col_info = serde_json::json!({

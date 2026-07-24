@@ -33,6 +33,10 @@ struct Cli {
     /// R2 object key (defaults to output filename)
     #[arg(short = 'k', long)]
     r2_key: Option<String>,
+
+    /// Sort Parquet output by this column (improves row-group pruning in smart fetch)
+    #[arg(long, default_value = "property_state")]
+    sort_by: String,
 }
 
 /// Build the 108-field schema from the Fannie Mae CRT File Layout (Oct 2020+ single-file format).
@@ -216,6 +220,10 @@ async fn main() -> Result<()> {
     let df = ctx.read_csv(&csv_path, csv_options).await?;
     let row_count = df.clone().count().await?;
     println!("✅ Read {row_count} rows");
+
+    println!("📊 Sorting by: {}", cli.sort_by);
+    let df = df.sort_by(vec![col(&cli.sort_by)])?;
+    println!("✅ Sorted");
 
     println!("💾 Writing Parquet: {}", cli.output);
     df.write_parquet(&cli.output, DataFrameWriteOptions::new(), None).await?;

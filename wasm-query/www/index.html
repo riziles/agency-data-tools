@@ -66,8 +66,8 @@
 import init, { query_parquet, get_row_group_stats } from "./wasm_query.js";
 
 const R = (id) => document.getElementById(id);
-const R2_URL = "https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans.parquet";
-const TOTAL_SIZE = 40689130;
+const R2_URL = "https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans-sorted.parquet";
+const TOTAL_SIZE = 57909647;
 const PAR1 = new Uint8Array([0x50, 0x41, 0x52, 0x31]);
 
 let rowGroupMeta = null;  // Array of { index, rows, byte_offset, byte_length, columns }
