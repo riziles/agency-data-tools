@@ -18,8 +18,14 @@ async function init() {
   R("progress-fill").style.width = "20%";
 
   try {
+    // Pass auth token from URL param (set by server after login)
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token") || "";
+    const headers = token ? { "x-auth-token": token } : {};
+
     client = await connect({
       endpoint: window.location.origin,
+      headers,
     });
     R("progress-fill").style.width = "100%";
     R("load-status").textContent = "Connected to DataFusion Flight SQL";
