@@ -166,15 +166,6 @@ pub async fn query_partial(
     let mut builder = ParquetRecordBatchReaderBuilder::try_new(reader)
         .map_err(|e| JsValue::from_str(&format!("Open: {e}")))?;
 
-    // Apply column projection if SQL references specific columns
-    if let Some(ref cols) = needed_cols {
-        if !cols.is_empty() {
-            let ps = builder.parquet_schema().clone();
-            let mask = parquet::arrow::ProjectionMask::columns(&ps, cols.iter().map(|s| s.as_str()));
-            builder = builder.with_projection(mask);
-        }
-    }
-
     builder = builder.with_row_groups(rgs);
 
     let schema = builder.schema().clone();
@@ -290,17 +281,6 @@ async fn query_parquet_inner(parquet_bytes: Vec<u8>, rgs: Option<Vec<usize>>, sq
     // Only read specified row groups (skip zero-filled gaps)
     if let Some(indices) = &rgs {
         builder = builder.with_row_groups(indices.clone());
-    }
-
-    // Apply column projection to only read columns the SQL needs
-    let mut projected = false;
-    if let Some(cols) = extract_columns_from_sql(sql) {
-        let ps = builder.parquet_schema().clone();
-        if !cols.is_empty() {
-            let mask = parquet::arrow::ProjectionMask::columns(&ps, cols.iter().map(|s| s.as_str()));
-            builder = builder.with_projection(mask);
-            projected = true;
-        }
     }
 
     // Get schema AFTER projection
