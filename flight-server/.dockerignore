@@ -1,0 +1,18 @@
+# Rust build artifacts
+target/
+!target/release/flight-sql-server
+
+# Dev files
+.git
+README.md
+*.log
+.pid
+.pids
+.server-pids
+
+# Build dependencies
+public/node_modules/.cache
+public/.playwright-cli
+
+# Smoke test files
+public/parquet-smoke*.html
