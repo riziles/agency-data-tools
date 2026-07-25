@@ -1,6 +1,36 @@
 /* @ts-self-types="./wasm_query.d.ts" */
 
 /**
+ * Debug: returns JSON with (a) all column paths in parquet schema,
+ * (b) columns extracted from SQL, (c) which matched.
+ * @param {Uint8Array} footer_bytes
+ * @param {string} sql
+ * @returns {string}
+ */
+export function debug_projection(footer_bytes, sql) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passArray8ToWasm0(footer_bytes, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(sql, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.debug_projection(ptr0, len0, ptr1, len1);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
  * Parse raw footer bytes (Thrift FileMetaData, without the 8-byte trailer)
  * and return row group column stats as JSON.
  * @param {Uint8Array} footer_metadata_bytes
@@ -206,7 +236,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 57549, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 57546, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm_bindgen_ff9de1b100f9ec60___convert__closures_____invoke___wasm_bindgen_ff9de1b100f9ec60___JsValue__core_7d5f0a2ba6a62c33___result__Result_____wasm_bindgen_ff9de1b100f9ec60___JsError___true_);
             return ret;
         },

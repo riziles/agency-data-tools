@@ -13,6 +13,43 @@ pub fn init() {
     console_error_panic_hook::set_once();
 }
 
+/// Debug: returns JSON with (a) all column paths in parquet schema,
+/// (b) columns extracted from SQL, (c) which matched.
+#[wasm_bindgen]
+pub fn debug_projection(footer_bytes: Vec<u8>, sql: &str) -> Result<String, JsValue> {
+    use parquet::file::metadata::ParquetMetaDataReader;
+    let meta = ParquetMetaDataReader::decode_metadata(&footer_bytes)
+        .map_err(|e| JsValue::from_str(&format!("Footer parse: {e}")))?;
+    let schema = meta.file_metadata().schema_descr();
+
+    // All parquet column paths
+    let parquet_paths: Vec<String> = schema.columns().iter()
+        .map(|c| c.path().string())
+        .collect();
+
+    // Extracted SQL columns
+    let sql_cols = extract_columns_from_sql(sql);
+
+    // Check mask matching
+    let mut matched: Vec<String> = Vec::new();
+    if let Some(ref cols) = sql_cols {
+        let mask = parquet::arrow::ProjectionMask::columns(schema, cols.iter().map(|s| s.as_str()));
+        for (i, path) in parquet_paths.iter().enumerate() {
+            if mask.leaf_included(i) {
+                matched.push(path.clone());
+            }
+        }
+    }
+
+    let debug = serde_json::json!({
+        "parquet_paths": parquet_paths,
+        "sql_cols": sql_cols,
+        "mask_matched": matched,
+        "parquet_col_count": schema.num_columns(),
+    });
+    Ok(debug.to_string())
+}
+
 /// Parse raw footer bytes (Thrift FileMetaData, without the 8-byte trailer)
 /// and return row group column stats as JSON.
 #[wasm_bindgen]
@@ -168,12 +205,25 @@ pub async fn query_partial(
 
     builder = builder.with_row_groups(rgs);
 
-    let schema = builder.schema().clone();
-    let batches: Vec<_> = builder
+    // Apply column projection to only read columns the SQL needs
+    if let Some(ref cols) = needed_cols {
+        if !cols.is_empty() {
+            let ps = builder.parquet_schema().clone();
+            let mask = parquet::arrow::ProjectionMask::columns(&ps, cols.iter().map(|s| s.as_str()));
+            builder = builder.with_projection(mask);
+        }
+    }
+
+    let mut reader = builder
         .build()
-        .map_err(|e| JsValue::from_str(&format!("Build: {e}")))?
+        .map_err(|e| JsValue::from_str(&format!("Build: {e}")))?;
+    let batches: Vec<_> = reader
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| JsValue::from_str(&format!("Read: {e}")))?;
+    if batches.is_empty() {
+        return Ok(serde_json::json!({"columns": [], "rows": [], "count": 0}).to_string());
+    }
+    let schema = batches[0].schema().clone();
 
     let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
 
@@ -213,10 +263,7 @@ fn extract_columns_from_sql(sql: &str) -> Option<Vec<String>> {
         return None;
     }
     
-    // For COUNT(*), just read the first column (need at least one to count rows)
-    if sql_upper.contains("COUNT(*)") {
-        return Some(vec!["loan_id".to_string()]);
-    }
+    // For COUNT(*) without any specific columns, just need one column to count rows
     let mut cols: Vec<String> = Vec::new();
     // Extract column names from SELECT clause
     let select_start = sql_upper.find("SELECT").unwrap_or(0) + 6;
@@ -255,6 +302,11 @@ fn extract_columns_from_sql(sql: &str) -> Option<Vec<String>> {
         }
     }
     
+    // If no columns found but query needs data (COUNT(*), etc.), fall back to loan_id
+    if cols.is_empty() && (sql_upper.contains("FROM DATA") || sql_upper.contains("FROM data")) {
+        cols.push("loan_id".to_string());
+    }
+    
     if cols.is_empty() { None } else { Some(cols) }
 }
 
@@ -283,13 +335,27 @@ async fn query_parquet_inner(parquet_bytes: Vec<u8>, rgs: Option<Vec<usize>>, sq
         builder = builder.with_row_groups(indices.clone());
     }
 
-    // Get schema AFTER projection
-    let schema = builder.schema().clone();
-    let batches: Vec<_> = builder
+    // Apply column projection to only read columns the SQL needs
+    if let Some(cols) = extract_columns_from_sql(sql) {
+        if !cols.is_empty() {
+            let ps = builder.parquet_schema().clone();
+            let mask = parquet::arrow::ProjectionMask::columns(&ps, cols.iter().map(|s| s.as_str()));
+            builder = builder.with_projection(mask);
+        }
+    }
+
+    // Build reader first so we can get the PROJECTED schema
+    let mut reader = builder
         .build()
-        .map_err(|e| JsValue::from_str(&format!("Build reader: {e}")))?
+        .map_err(|e| JsValue::from_str(&format!("Build reader: {e}")))?;
+    let batches: Vec<_> = reader
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| JsValue::from_str(&format!("Read batches: {e}")))?;
+    // Use schema from first batch (reflects projection) — empty batches = nothing to query
+    if batches.is_empty() {
+        return Ok(serde_json::json!({"columns": [], "rows": [], "count": 0}).to_string());
+    }
+    let schema = batches[0].schema().clone();
 
     let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
 
