@@ -431,6 +431,12 @@ fn col_to_json(col: &dyn datafusion::arrow::array::Array, idx: usize) -> serde_j
         DataType::Utf8 => serde_json::Value::String(
             col.as_any().downcast_ref::<StringArray>().unwrap().value(idx).to_string(),
         ),
+        DataType::Utf8View => serde_json::Value::String(
+            col.as_any().downcast_ref::<StringViewArray>().unwrap().value(idx).to_string(),
+        ),
+        DataType::LargeUtf8 => serde_json::Value::String(
+            col.as_any().downcast_ref::<LargeStringArray>().unwrap().value(idx).to_string(),
+        ),
         DataType::Int32 => serde_json::Value::Number(serde_json::Number::from(
             col.as_any().downcast_ref::<Int32Array>().unwrap().value(idx),
         )),
