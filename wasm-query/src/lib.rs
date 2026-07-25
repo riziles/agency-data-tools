@@ -168,12 +168,9 @@ pub async fn query_partial(
 
     // Apply column projection if SQL references specific columns
     if let Some(ref cols) = needed_cols {
-        let parquet_schema = builder.parquet_schema().clone();
-        let indices: Vec<usize> = cols.iter().filter_map(|name| {
-            parquet_schema.columns().iter().position(|c| c.path().string() == *name)
-        }).collect();
-        if !indices.is_empty() && indices.len() < parquet_schema.columns().len() {
-            let mask = parquet::arrow::ProjectionMask::leaves(&parquet_schema, indices);
+        if !cols.is_empty() {
+            let ps = builder.parquet_schema().clone();
+            let mask = parquet::arrow::ProjectionMask::columns(&ps, cols.iter().map(|s| s.as_str()));
             builder = builder.with_projection(mask);
         }
     }
@@ -299,11 +296,9 @@ async fn query_parquet_inner(parquet_bytes: Vec<u8>, rgs: Option<Vec<usize>>, sq
     let mut projected = false;
     if let Some(cols) = extract_columns_from_sql(sql) {
         let ps = builder.parquet_schema().clone();
-        let indices: Vec<usize> = cols.iter().filter_map(|name| {
-            ps.columns().iter().position(|c| c.path().string() == *name)
-        }).collect();
-        if !indices.is_empty() && indices.len() < ps.columns().len() {
-            builder = builder.with_projection(parquet::arrow::ProjectionMask::leaves(&ps, indices));
+        if !cols.is_empty() {
+            let mask = parquet::arrow::ProjectionMask::columns(&ps, cols.iter().map(|s| s.as_str()));
+            builder = builder.with_projection(mask);
             projected = true;
         }
     }
