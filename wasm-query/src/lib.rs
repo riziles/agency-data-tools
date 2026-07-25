@@ -224,12 +224,17 @@ fn extract_columns_from_sql(sql: &str) -> Option<Vec<String>> {
     if sql_upper.contains("SELECT *") {
         return None;
     }
+    
+    // For COUNT(*), just read the first column (need at least one to count rows)
+    if sql_upper.contains("COUNT(*)") {
+        return Some(vec!["loan_id".to_string()]);
+    }
+    let mut cols: Vec<String> = Vec::new();
     // Extract column names from SELECT clause
     let select_start = sql_upper.find("SELECT").unwrap_or(0) + 6;
     let from_pos = sql_upper.find("FROM").unwrap_or(sql.len());
     let select_clause = &sql[select_start..from_pos];
     
-    let mut cols = Vec::new();
     // Split by comma, extract identifiers
     for part in select_clause.split(',') {
         let part = part.trim();
@@ -290,6 +295,20 @@ async fn query_parquet_inner(parquet_bytes: Vec<u8>, rgs: Option<Vec<usize>>, sq
         builder = builder.with_row_groups(indices.clone());
     }
 
+    // Apply column projection to only read columns the SQL needs
+    let mut projected = false;
+    if let Some(cols) = extract_columns_from_sql(sql) {
+        let ps = builder.parquet_schema().clone();
+        let indices: Vec<usize> = cols.iter().filter_map(|name| {
+            ps.columns().iter().position(|c| c.path().string() == *name)
+        }).collect();
+        if !indices.is_empty() && indices.len() < ps.columns().len() {
+            builder = builder.with_projection(parquet::arrow::ProjectionMask::leaves(&ps, indices));
+            projected = true;
+        }
+    }
+
+    // Get schema AFTER projection
     let schema = builder.schema().clone();
     let batches: Vec<_> = builder
         .build()

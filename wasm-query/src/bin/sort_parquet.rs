@@ -1,7 +1,7 @@
 use datafusion::prelude::*;
 use std::path::Path;
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = std::env::args().nth(1).unwrap_or_else(|| "../test-data/2024Q1.parquet".into());
     let output = std::env::args().nth(2).unwrap_or_else(|| "../test-data/2024Q1-sorted.parquet".into());
