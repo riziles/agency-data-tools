@@ -35,4 +35,7 @@ Thumbs.db
 !test-data/*.csv
 *.parquet
 !test-data/sample.parquet
+
+# Runtime artifacts
+flight-server/data/.lock
 /query/
