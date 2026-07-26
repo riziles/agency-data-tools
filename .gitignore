@@ -39,3 +39,4 @@ Thumbs.db
 # Runtime artifacts
 flight-server/data/.lock
 /query/
+dashboard/build
