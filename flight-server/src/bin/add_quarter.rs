@@ -1,13 +1,11 @@
 /// Add a new quarter's parquet file to the existing DuckLake catalog.
-/// Uses streaming reads — never loads all rows into memory at once.
+/// Uses streaming reads + memory monitoring — never loads all rows into memory at once.
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
 use datafusion::prelude::*;
-use datafusion_ducklake::{
-    DuckLakeTableWriter, SqliteMetadataWriter,
-};
+use datafusion_ducklake::{DuckLakeTableWriter, SqliteMetadataWriter};
 use futures::StreamExt;
 use object_store::local::LocalFileSystem;
 
@@ -22,6 +20,25 @@ struct Args {
     /// Rows per DuckLake file (smaller = less memory, more files)
     #[arg(long, default_value = "500000")]
     chunk_size: usize,
+
+    /// Abort if VmRSS exceeds this (MiB). 0 = no limit.
+    #[arg(long, default_value = "0")]
+    max_memory_mb: u64,
+}
+
+fn current_memory_mb() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    for line in status.lines() {
+        if line.starts_with("VmRSS:") {
+            return line
+                .split_whitespace()
+                .nth(1)?
+                .parse::<u64>()
+                .ok()
+                .map(|kb| kb / 1024);
+        }
+    }
+    None
 }
 
 #[tokio::main]
@@ -59,14 +76,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         chunk_batches.push(batch);
 
         if chunk_rows >= args.chunk_size {
+            let mem = current_memory_mb().unwrap_or(0);
+            if args.max_memory_mb > 0 && mem > args.max_memory_mb {
+                eprintln!(
+                    "ABORT: memory {mem} MiB exceeds --max-memory-mb {} ({} rows processed)",
+                    args.max_memory_mb, total_rows
+                );
+                std::process::exit(1);
+            }
             let result = table_writer
                 .append_table("main", "loans", &chunk_batches)
                 .await?;
             files_written += result.files_written;
             last_snapshot = result.snapshot_id;
             println!(
-                "  chunk: {} rows → snapshot {}",
-                chunk_rows, result.snapshot_id
+                "  chunk: {} rows → snapshot {} (mem: {} MiB)",
+                chunk_rows, result.snapshot_id, mem
             );
             chunk_batches.clear();
             chunk_rows = 0;
