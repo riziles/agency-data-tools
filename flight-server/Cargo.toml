@@ -4,6 +4,18 @@ version = "0.1.0"
 edition = "2024"
 default-run = "flight-sql-server"
 
+[[bin]]
+name = "flight-sql-server"
+path = "src/main.rs"
+
+[[bin]]
+name = "add-quarter"
+path = "src/bin/add_quarter.rs"
+
+[[bin]]
+name = "test_client"
+path = "src/bin/test_client.rs"
+
 [dependencies]
 datafusion = "54"
 datafusion-ducklake = { version = "0.5", features = ["metadata-sqlite", "write-sqlite"] }
