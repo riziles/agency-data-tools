@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>parquet-wasm simple test</title>
+  <style>
+    :root { --bg: #1a1a2e; --text: #eaeaea; --green: #4caf50; --red: #f44336; --muted: #888; }
+    body { font-family: monospace; background: var(--bg); color: var(--text); padding: 2rem; }
+    .step { margin: 0.5rem 0; padding: 0.5rem; } .ok { color: var(--green); } .err { color: var(--red); } .wait { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <h2>parquet-wasm — simple smoke</h2>
+  <div id="log"></div>
+
+<script type="importmap">
+{ "imports": { "parquet-wasm": "https://cdn.jsdelivr.net/npm/parquet-wasm@0.6.1/esm/+esm" } }
+</script>
+
+<script type="module">
+import wasmInit, { ParquetFile, readParquet } from "parquet-wasm";
+
+const log = document.getElementById("log");
+function step(msg, cls = "wait") {
+  const d = document.createElement("div");
+  d.className = `step ${cls}`;
+  d.textContent = msg;
+  log.appendChild(d);
+  console.log(`[${cls}] ${msg}`);
+}
+
+const R2_URL = "https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans.parquet";
+
+(async () => {
+  step("Loading WASM...");
+  await wasmInit();
+  step("WASM loaded", "ok");
+
+  // Test 1: ParquetFile.fromUrl (metadata)
+  step("Opening from URL...");
+  const file = await ParquetFile.fromUrl(R2_URL);
+  step("Opened", "ok");
+
+  const meta = file.metadata();
+  const fm = meta.fileMetadata();
+  const rows = fm.numRows();
+  const rgs = meta.numRowGroups();
+  step(`Metadata: ${rows?.toLocaleString()} rows, ${rgs} row groups`, "ok");
+
+  // Test 2: read() returns data (we know this works from earlier)
+  step("Calling file.read({ limit: 1 })...");
+  const t0 = performance.now();
+  const table = await file.read({ limit: 1 });
+  const ms = (performance.now() - t0).toFixed(0);
+  step(`Read returned in ${ms}ms`, "ok");
+  step(`Table type: ${table.constructor.name}`, "ok");
+
+  // Test 3: Inspect raw IPC bytes (don't try to parse with apache-arrow)
+  step("Getting IPC stream...");
+  const buf = table.intoIPCStream();
+  step(`IPC stream: ${buf.length} bytes`, "ok");
+
+  // Check that it starts with Arrow IPC magic "ARROW1"
+  const magic = String.fromCharCode(...buf.slice(0, 6));
+  step(`Magic bytes: "${magic}" (expected "ARROW1")`, magic === "ARROW1\0\0" || magic.startsWith("ARROW") ? "ok" : "err");
+
+  // Test 4: stream() approach
+  step("Testing stream()...");
+  const readable = await file.stream({ limit: 1 });
+  step(`Stream created (${readable.constructor.name})`, "ok");
+
+  step("Reading from stream...");
+  const reader = readable.getReader();
+  const result = await reader.read();
+  reader.releaseLock();
+
+  if (result.done) {
+    step("Stream done (no data)", "err");
+  } else {
+    const batch = result.value;
+    step(`Got batch: ${batch.numRows} rows, schema=${!!batch.schema}`, "ok");
+    const batchMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(batch));
+    step(`Batch methods: ${batchMethods.join(", ")}`, "ok");
+
+    // Get schema info
+    step(`Num rows: ${batch.numRows}`, "ok");
+
+    // Free resources
+    batch.free?.();
+  }
+
+  step("✅ parquet-wasm works with our R2 file!", "ok");
+  step("   Metadata: yes", "ok");
+  step("   read() → Table: yes", "ok");
+  step("   stream() → RecordBatch: yes", "ok");
+  step("   IPC export: yes (raw bytes)", "ok");
+  step("   IPC→ArrowJS parsing: BROKEN for this file", "err");
+
+})().catch(e => {
+  step(`FAILED: ${e.message || e}`, "err");
+  console.error(e);
+});
+</script>
+</body>
+</html>

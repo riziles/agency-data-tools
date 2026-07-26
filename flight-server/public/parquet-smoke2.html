@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>parquet-wasm smoke test v2</title>
+  <style>
+    :root { --bg: #1a1a2e; --surface: #16213e; --text: #eaeaea; --muted: #888; --green: #4caf50; --red: #f44336; }
+    body { font-family: monospace; background: var(--bg); color: var(--text); padding: 2rem; }
+    .step { margin: 0.5rem 0; padding: 0.5rem; border-radius: 4px; }
+    .step.ok { color: var(--green); } .step.err { color: var(--red); } .step.wait { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <h2>parquet-wasm — sync API test</h2>
+  <div id="log"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "parquet-wasm": "https://cdn.jsdelivr.net/npm/parquet-wasm@0.6.1/esm/+esm",
+    "apache-arrow": "https://cdn.jsdelivr.net/npm/apache-arrow@20.0.0/+esm"
+  }
+}
+</script>
+
+<script type="module">
+import wasmInit, { readParquet, readSchema } from "parquet-wasm";
+import { tableFromIPC } from "apache-arrow";
+
+const log = document.getElementById("log");
+function step(msg, cls = "wait") {
+  const d = document.createElement("div");
+  d.className = `step ${cls}`;
+  d.textContent = msg;
+  log.appendChild(d);
+}
+
+const R2_URL = "https://pub-a0dfcedd4df848e5bfca15cca210aea5.r2.dev/2024/Q1/loans.parquet";
+
+try {
+  step("Loading WASM...");
+  await wasmInit();
+  step("WASM loaded", "ok");
+
+  // Download the full file for sync API test
+  step("Downloading full parquet from R2 (40MB)...");
+  const t0 = performance.now();
+  const resp = await fetch(R2_URL);
+  const buf = new Uint8Array(await resp.arrayBuffer());
+  const ms = (performance.now() - t0).toFixed(0);
+  step(`Downloaded ${(buf.length / 1024 / 1024).toFixed(1)} MB in ${ms}ms`, "ok");
+
+  // Try reading schema first
+  step("Reading schema...");
+  const wasmSchema = readSchema(buf);
+  step(`Schema loaded!`, "ok");
+
+  // Read parquet data
+  step("Parsing parquet...");
+  const wasmTable = readParquet(buf);
+  step(`WASM table created`, "ok");
+
+  // Convert to JS
+  step("Converting to JS Arrow...");
+  const ipcBuf = wasmTable.intoIPCStream();
+  const table = tableFromIPC(ipcBuf);
+
+  const names = table.schema.fields.map(f => f.name);
+  step(`Success! ${table.numRows} rows, ${names.length} cols`, "ok");
+  step(`First cols: ${names.slice(0, 10).join(", ")}...`, "ok");
+
+  // Show first 5 rows, first 5 cols
+  let preview = "";
+  for (let r = 0; r < Math.min(table.numRows, 5); r++) {
+    const row = names.slice(0, 5).map(n => table.getChild(n)?.get(r) ?? "NULL").join(" | ");
+    preview += `  ${row}\n`;
+  }
+  step(`\n${preview}`, "ok");
+
+} catch (e) {
+  step(`FAILED: ${e.message || e}`, "err");
+  console.error(e);
+}
+</script>
+</body>
+</html>
