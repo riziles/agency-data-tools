@@ -1,158 +1,186 @@
-# Agency Data Tools
+# Fannie Mae Loan Performance — DataFusion Analytics
 
-Fannie Mae loan performance data ingestion and analytics pipeline.
+Full pipeline for Fannie Mae single-family loan performance data: fetch, convert, store, and query **~751 million rows** across 32 quarters (2018–2025) using Apache DataFusion and [DuckLake](https://github.com/datafusion-contrib/datafusion-ducklake).
 
-## Status
+## Architecture
 
-**Pipeline working end-to-end** 🎉 — Fetches real data from Fannie Mae API, extracts ZIP, converts CSV → Parquet. 2024 Q1 = 4M rows, 1.28 GB CSV → 39 MB Parquet (33:1 compression).
+```
+Fannie Mae API                    Local disk                      Browser
+  │                                 │                               │
+  │  OAuth2 → signed S3 URL         │                               │
+  │ ─────────────────────────────▶  │                               │
+  │  ZIP download (~50MB–1.8GB)     │                               │
+  │ ◀─────────────────────────────  │                               │
+  │                                 │                               │
+  │                                 │  ingest (DataFusion 54)       │
+  │                                 │  CSV → Parquet (33:1)        │
+  │                                 │  ↓                           │
+  │                                 │  add-quarter (streaming)     │
+  │                                 │  Parquet → DuckLake catalog  │
+  │                                 │  ↓                           │
+  │                                 │  Flight SQL server :50051    │
+  │                                 │  DuckLake catalog (SQLite)   │
+  │                                 │  ↓                           │
+  │                                 │  Node proxy :8765            │
+  │                                 │  (password gate, gRPC-web)   │
+  │                                 │ ───────────────────────────▶ │
+  │                                 │                               │  @sparrowflight/js
+  │                                 │  Arrow RecordBatches          │  SQL editor
+  │                                 │ ◀───────────────────────────  │  Dark theme
+  │                                 │                               │  ~500ms queries
+```
 
-### What Works
-- ✅ Cloudflare R2 bucket `fannie-mae-poc` created
-- ✅ Rust ingestion tool compiles (DataFusion CSV→Parquet conversion)
-- ✅ CSV→Parquet on test data works (pipe-delimited, no headers)
-- ✅ Wrangler CLI authenticated to Cloudflare
-- ✅ Fannie Mae API auth: `auth.pingone.com` → `x-public-access-token` header → 200 OK
-- ✅ Full pipeline: API → signed S3 URL → ZIP download → CSV extract → Parquet
-- ✅ 2024 Q1: 3,989,404 rows, 94 MB ZIP → 39 MB Parquet
-- ✅ Cloudflare skills installed (`.pi/skills/`)
-- ✅ Git repo pushed to GitHub
+## Quick Start
 
-### Resolved Auth Issue
-- The bug: code was hitting `fmsso-prod.fanniemae.com` for tokens (doesn't resolve)
-- The fix: use `auth.pingone.com/4c2b23f9-52b1-4f8f-aa1f-1d477590770c/as/token` (matches Fannie Mae's own Python reference client)
-- Auth header: `x-public-access-token: {token}` (not `Authorization: Bearer`)
+```bash
+# Build everything
+cd ingest && cargo build --release
+cd ../flight-server && cargo build --release --bin flight-sql-server --bin add-quarter
 
-### To Do
-- Upload Parquet files to R2
-- Build query layer (DuckDB WASM or DataFusion WASM)
-- Fetch additional quarters/years
-- Add SQLite/DataFusion query endpoint
+# Ingest a quarter (downloads ZIP, converts to Parquet)
+cd ..
+source .env
+./ingest/target/release/fannie-ingest --year 2024 --quarter Q1 --output test-data/2024Q1.parquet
+
+# Add to DuckLake catalog (streaming, 500k-row chunks)
+cp test-data/2024Q1.parquet flight-server/data/
+cd flight-server
+./target/release/add-quarter --data-dir data --parquet data/2024Q1.parquet --max-memory-mb 4000
+rm data/2024Q1.parquet
+
+# Start the server + proxy
+./target/release/flight-sql-server --data-dir data --parquet data/seed.parquet &
+cd public && APP_PASSWORD=demo node server.mjs &
+
+# Open http://localhost:8765 — password: demo
+```
+
+### Docker
+
+```bash
+cd flight-server
+docker build -t fannie-flight .
+docker run -d --name fannie-flight \
+  -p 8765:8765 \
+  -v ./data:/app/data \
+  -e APP_PASSWORD=yourpass \
+  -e TUNNEL=1 \
+  fannie-flight:latest
+```
+
+Set `TUNNEL=1` to auto-start a [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) for public access via `*.trycloudflare.com`.
+
+## Dataset
+
+**32 quarters** (2018 Q1 – 2025 Q4), ~751 million rows.
+
+| Year | Rows | Notes |
+|------|-----:|-------|
+| 2018 | 78M | Pre-COVID baseline |
+| 2019 | 79M | Steady market |
+| 2020 | 235M | COVID refi boom (Q4: 80M) |
+| 2021 | 236M | Peak refi era (Q1: 73M) |
+| 2022 | 73M | Market cooling |
+| 2023 | 27M | Rate hikes hit originations |
+| 2024 | 17M | Continued decline |
+| 2025 | 6M | Low-volume market (Q4: 0.5M) |
+
+**Schema:** 113 columns — loan characteristics, borrower credit, property details, performance flags. See [CRT File Layout PDF](http://capitalmarkets.fanniemae.com/sites/capmrkt/files/2023-06/crt-file-layout-and-glossary.pdf).
+
+The 2025 Q4 data (effective date: July 2026) is the most recent available. Fannie Mae releases with a ~6-month lag; 2026 Q1 is not yet published.
 
 ## Project Structure
 
 ```
 .
-├── ingest/                        # Rust ingestion tool
-│   ├── Cargo.toml                 # DataFusion, reqwest, object_store
-│   └── src/main.rs                # CLI: Fannie API → CSV → Parquet → R2
-├── test-data/
-│   ├── sample.csv                 # 5-row test CSV (pipe-delimited, no headers)
-│   └── sample.parquet             # Converted Parquet output
-├── scripts/
-│   └── setup-env.sh               # Reads secrets/datadynamics.yaml → .env
-├── .pi/skills/                    # Cloudflare agent skills
-├── secrets/                       # (gitignored) Fannie Mae credentials
-├── .env                           # (gitignored) Environment variables
-├── ARCHITECTURE.md                # Full architecture analysis
-├── .mcp.json                      # Cloudflare MCP servers
-└── README.md                      # This file
+├── ingest/                          # DataFusion 54 CSV→Parquet + Fannie Mae API
+│   ├── Cargo.toml
+│   └── src/main.rs                  # CLI: fetch, download ZIP, extract, convert
+├── flight-server/                   # Flight SQL server + browser client
+│   ├── Cargo.toml                   # DataFusion 54 + DuckLake 0.5 + Arrow Flight
+│   ├── Dockerfile                   # debian:trixie-slim, 804MB, bind-mount data
+│   ├── docker-entrypoint.sh         # Starts server → proxy → optional tunnel
+│   ├── start.sh                     # Host launch: server + proxy + Tailscale
+│   ├── src/
+│   │   ├── main.rs                  # Flight SQL server + DuckLake catalog
+│   │   ├── lock.rs                  # File locking (prevent concurrent writes)
+│   │   └── bin/
+│   │       ├── add_quarter.rs       # Streaming Parquet→DuckLake ingest
+│   │       └── test_client.rs       # Test queries against Flight SQL
+│   ├── public/
+│   │   ├── index.html               # Browser query UI (dark theme)
+│   │   ├── server.mjs               # Node proxy: password gate + gRPC-web
+│   │   └── src/app.js               # @sparrowflight/js Flight SQL client
+│   └── data/                        # (bind-mounted) DuckLake catalog
+│       ├── catalog.db               # SQLite metadata
+│       └── datalake/                 # UUID-named Parquet chunks
+├── wasm-query/                      # DataFusion WASM demo (separate branch)
+├── test-data/                       # Source Parquet files (backup copies)
+├── docs/                            # Implementation notes
+├── scripts/setup-env.sh             # Reads secrets/datadynamics.yaml → .env
+├── .pi/skills/                      # Cloudflare agent skills
+└── ARCHITECTURE.md                  # Original architecture analysis
 ```
 
-## Setup (on a new machine)
+## Key Design Decisions
 
-### Prerequisites
-- Rust toolchain (edition 2024, tested with rustc 1.92)
-- pnpm (or npm)
-- Cloudflare account with R2 enabled
-- Fannie Mae developer portal account with an app for the Loan Performance History API
+| Decision | Rationale |
+|----------|-----------|
+| **Flight SQL over WASM** | 33× faster (500ms vs 4.8s), no browser download, supports full SQL |
+| **DuckLake over raw Parquet** | Schema enforcement, snapshots, SQL `ADD FILES`, time travel |
+| **Streaming ingest** | `execute_stream()` + 500k-row chunks — never loads full CSV into memory |
+| **File locking** | `flock()` prevents concurrent `add-quarter` + `flight-server` (SQLite corruption) |
+| **Docker bind mount** | Catalog stays on host, image is only 804MB, no data baked in |
+| **Cloudflare Tunnel** | Zero-config public access, no firewall rules, free |
+| **Node proxy** | Password gate, gRPC-web support, CORS, serves static files |
+| **DF 54 everywhere** | Single version across ingest + flight-server (upgraded from DF 47) |
 
-### Credentials
+## Query Examples
+
+```sql
+-- Total rows
+SELECT count(*) FROM ducklake.main.loans;
+
+-- Average loan amount by year
+SELECT
+  CASE
+    WHEN loan_id LIKE '%2018%' THEN '2018'
+    WHEN loan_id LIKE '%2019%' THEN '2019'
+    -- ...
+  END as year,
+  count(*) as loans,
+  round(avg(original_upb), 0) as avg_upb
+FROM ducklake.main.loans
+GROUP BY 1 ORDER BY 1;
+
+-- Credit score distribution
+SELECT
+  round(borrower_credit_score_at_origination / 50) * 50 as score_bucket,
+  count(*) as cnt
+FROM ducklake.main.loans
+WHERE borrower_credit_score_at_origination > 0
+GROUP BY 1 ORDER BY 1;
+```
+
+## Credentials
 
 Copy `.env.example` to `.env` and fill in:
 
-```bash
-cp .env.example .env
-```
+- `FANNIE_CLIENT_ID` / `FANNIE_CLIENT_SECRET` — Fannie Mae developer portal app
+- `APP_PASSWORD` — password for the browser query UI (default: `demo`)
 
-Required:
-- `FANNIE_CLIENT_ID` and `FANNIE_CLIENT_SECRET` — from Fannie Mae developer portal app
-- `R2_ACCOUNT_ID` — Cloudflare account ID (dashboard → right sidebar)
-
-Optional (for programmatic R2 upload):
-- `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` — R2 API token (Cloudflare dashboard → R2 → API Tokens)
-
-### Tools
-
-```bash
-# Install wrangler (already in pnpm deps)
-pnpm install
-
-# Authenticate wrangler
-pnpm wrangler login
-
-# Build the ingestion tool
-cd ingest && cargo build
-```
-
-### Cloudflare Skills
-
-The Cloudflare agent skills are in `.pi/skills/`. Pi (or any Agent Skills-compatible agent) will auto-discover them.
-
-Pi will prompt you to trust the project when first running in this directory.
-
-## Ingestion Tool Usage
-
-```bash
-# Convert local CSV to Parquet (pipe-delimited, no headers)
-cd ingest && cargo run -- --input ../data.csv --output ../data.parquet
-
-# Fetch from Fannie Mae API and convert
-cargo run -- --year 2024 --quarter Q1 --output data.parquet
-
-# Upload to R2 after conversion
-cargo run -- --year 2024 --quarter Q1 --output data.parquet \
-  --r2-bucket fannie-mae-poc \
-  --r2-key 2024/Q1/data.parquet
-```
-
-## Fannie Mae API Details
+## API Reference
 
 | Item | Value |
 |------|-------|
-| API Base URL | `https://api.fanniemae.com` |
-| Token Endpoint | `https://auth.pingone.com/4c2b23f9-52b1-4f8f-aa1f-1d477590770c/as/token` |
-| Auth Flow | OAuth2 client credentials (Client ID + Client Secret) |
-| Token Scope | `clientcredential` |
-| API Docs | `devptlpub.fv7dp.etss.prod.fanniemae.com` (login required) |
-| App Name | `datafusion01` |
-| API Product | `SingleFamilyLphExchangeAPI` |
+| API base | `https://api.fanniemae.com` |
+| Token endpoint | `https://auth.pingone.com/4c2b23f9-52b1-4f8f-aa1f-1d477590770c/as/token` |
+| Auth flow | OAuth2 client credentials |
+| Auth header | `x-public-access-token: {token}` (not `Authorization: Bearer`) |
+| Endpoint | `GET /v1/sf-loan-performance-data/years/{year}/quarters/{quarter}` |
+| Response | `{ lphResponse: [{ s3Uri, year, quarter }] }` |
+| ZIP contents | Single pipe-delimited CSV, no header, 113 columns |
 
-### Endpoints
+## License
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/sf-loan-performance-data/years/{year}/quarters/{quarter}` | Data for year/quarter |
-| GET | `/v1/sf-loan-performance-data/primary-dataset` | Full dataset |
-| GET | `/v1/sf-loan-performance-data/harp-dataset` | HARP dataset |
-
-Response contains signed S3 URLs (`s3Uri`) for actual CSV download.
-
-### Known Auth Issue
-
-The PingOne token endpoint returns a valid access token, but `api.fanniemae.com` returns 401 regardless of how the token is sent. The app IS subscribed to `SingleFamilyLphExchangeAPI`. Possible causes:
-1. Token needs additional scopes or a specific audience claim
-2. API expects a different header format
-3. The developer portal app needs an additional approval step
-4. The API gateway uses a different auth scheme not reflected in the OpenAPI spec
-
-## R2 Bucket
-
-- Bucket: `fannie-mae-poc`
-- Storage class: Standard
-- No egress fees
-- Wrangler commands:
-  ```bash
-  pnpm wrangler r2 object list fannie-mae-poc --remote   # list objects
-  pnpm wrangler r2 object put BUCKET/KEY --file FILE --remote  # upload
-  pnpm wrangler r2 object get BUCKET/KEY --remote        # download
-  ```
-
-## Notes for Another Agent
-
-- The OpenAPI spec is at `/home/mr/Downloads/Single-Family Loan Performance History API.json`
-- The Python reference client is at `Developer-Portal-Fannie-Mae/fnmapublic-python-clients` on GitHub — it shows the exact auth flow
-- Fannie Mae CSVs are **pipe-delimited** (`|`) and have **no header row** — schema is in their file layout PDF
-- The sample file URL: `https://capitalmarkets.fanniemae.com/resources/file/credit-risk/xls/sf-loan-performance-data-sample.csv`
-- Data is grouped by acquisition year/quarter, updated quarterly
-- The PingOne environment ID in the token URL is specific to Fannie Mae's developer portal
-- Playwright browser was used to inspect the developer portal — there's a `playwright-cli` skill available
+MIT

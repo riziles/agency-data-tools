@@ -1,148 +1,104 @@
-# Phase 1: DataFusion Flight SQL Server (local)
-
-## Stack
-
-- **DataFusion** — query engine
-- **datafusion-ducklake** — table format + catalog (SQLite metadata, Parquet data)
-- **Arrow Flight SQL** — wire protocol for browser client
-- **tonic-web** — gRPC-web support so the browser can connect
+# Flight SQL Server
 
 ## What it does
 
-A Rust binary that:
+A Rust binary (`flight-sql-server`) that:
+
 - Exposes a Flight SQL endpoint on `localhost:50051`
-- Stores table metadata in a local SQLite database (DuckLake catalog)
-- Reads Parquet files from local disk
-- Executes SQL queries using DataFusion → DuckLake and streams results as Arrow record batches
+- Uses [DuckLake](https://github.com/datafusion-contrib/datafusion-ducklake) for table metadata (SQLite catalog + Parquet data files)
+- Executes SQL via DataFusion 54, streams results as Arrow record batches
+- Writes PID to `data/.lock` (shared lock) to prevent concurrent `add-quarter` runs
 
 ```
-Browser                          Rust binary              Local disk
-  │                                │                        │
-  │  gRPC-web Flight SQL           │  DuckLake catalog      │
-  │ ────────────────────────────▶  │  (SQLite metadata)     │
-  │                                │  ↓                     │
-  │                                │  DataFusion query      │
-  │  Arrow RecordBatches           │  ↓                     │
-  │ ◀────────────────────────────  │  Parquet files         │
+Flight SQL :50051 ──→ DuckLake catalog (SQLite) ──→ data/datalake/*.parquet
+     │
+Node proxy :8765 ──→ password gate + gRPC-web ──→ browser
+     │
+cloudflared ──→ *.trycloudflare.com (optional)
 ```
 
-## Dependencies
+## Stack
 
 ```toml
-[dependencies]
-datafusion = "53"
+datafusion = "54"
 datafusion-ducklake = { version = "0.5", features = ["metadata-sqlite", "write-sqlite"] }
-datafusion-flight-sql-server = "53"
-tokio = { version = "1", features = ["full"] }
+datafusion-flight-sql-server = { git = "..." }  # custom fork, DF54-compatible
+tokio = "1"
 tonic = "0.12"
-tonic-web = "0.12"
-clap = { version = "4", features = ["derive"] }
+tonic-web = "0.14"
+fs2 = "0.4"  # POSIX file locking
+clap = "4"
 ```
 
-Why `datafusion-ducklake` instead of raw DataFusion?
-
-| Raw DataFusion | datafusion-ducklake |
-|---|---|
-| `ctx.register_parquet("t", "file.parquet")` | SQL `ADD FILES 'data/*.parquet' INTO TABLE loans` |
-| No metadata tracking | Catalog tracks which files belong to which table |
-| No schema enforcement | Schema validated on ingest |
-| Just read | Read + write + maintenance (compaction, orphan cleanup) |
-| No time travel | Snapshots |
-
-## Key implementation points
-
-### 1. DuckLake catalog with SQLite
-
-SQLite is embedded — no server process needed:
-
-```rust
-use datafusion::prelude::*;
-use datafusion_ducklake::{DuckLakeCatalog, SqliteMetadataProvider};
-
-let provider = SqliteMetadataProvider::new("sqlite://catalog.db").await?;
-
-let catalog = DuckLakeCatalog::new(provider)?;
-let ctx = SessionContext::new();
-ctx.register_catalog("ducklake", Arc::new(catalog));
-```
-
-### 2. Ingest Parquet into DuckLake
-
-Once the catalog is registered, add our existing Parquet file:
-
-```sql
--- Run inside the DuckLake catalog context
-ADD FILES 'data/2024Q1.parquet' INTO TABLE ducklake.main.loans;
-```
-
-Or programmatically via DataFusion:
-
-```rust
-ctx.sql("ADD FILES 'data/2024Q1.parquet' INTO TABLE ducklake.main.loans").await?;
-```
-
-DuckLake reads the Parquet schema, creates the table metadata in SQLite, and the data stays in place (no copy).
-
-### 3. Flight SQL service
-
-```rust
-use datafusion_flight_sql_server::FlightSqlService;
-
-struct FannieMaeServer {
-    ctx: SessionContext,
-}
-
-#[tonic::async_trait]
-impl FlightSqlService for FannieMaeServer {
-    // Tables auto-detected from SessionContext
-    // Queries forwarded to ctx.sql(sql).collect().await
-    // Results streamed as Arrow FlightData
-}
-```
-
-### 4. gRPC-web for browser access
-
-```rust
-use tonic_web::GrpcWebLayer;
-use tower_http::cors::CorsLayer;
-
-let svc = FlightServiceServer::new(service);
-
-tonic::transport::Server::builder()
-    .accept_http1(true)
-    .layer(GrpcWebLayer::new())
-    .layer(CorsLayer::permissive())
-    .add_service(svc)
-    .serve(addr)
-    .await?;
-```
-
-## File structure
-
-```
-flight-server/
-├── Cargo.toml
-├── data/
-│   └── 2024Q1.parquet          # Copy from ingest/test-data/ (39 MB)
-└── src/
-    └── main.rs                 # Single file: catalog, ingest, serve
-
-# Runtime state (gitignored):
-#   catalog.db                  # SQLite metadata (auto-created)
-```
-
-## Test with grpcurl
+## Startup
 
 ```bash
-cargo run -- --bind 127.0.0.1:50051 --data-dir ./data
+# Host
+./flight-sql-server --data-dir ./data --parquet /path/to/seed.parquet
+# --parquet is only used for first-time catalog init (if catalog.db doesn't exist)
 
-# First run: ingest the Parquet file
-grpcurl -plaintext -d '{"query":"ADD FILES '"'"'data/2024Q1.parquet'"'"' INTO TABLE ducklake.main.loans"}' \
-  localhost:50051 \
-  arrow.flight.protocol.FlightService/GetFlightInfo
+# Docker
+docker run -v ./data:/app/data -e APP_PASSWORD=demo -e TUNNEL=1 fannie-flight
+```
 
-# Query it
-grpcurl -plaintext -d '{"query":"SELECT count(*) FROM ducklake.main.loans"}' \
-  localhost:50051 \
-  arrow.flight.protocol.FlightService/GetFlightInfo
+The entrypoint starts:
+1. Flight SQL server on :50051
+2. Node proxy on :8765 (password gate, gRPC-web, static files)
+3. Optional Cloudflare Tunnel
+
+## DuckLake Catalog
+
+- **Metadata**: `data/catalog.db` (SQLite)
+- **Data**: `data/datalake/<uuid>.parquet` (UUID-named chunks)
+- **Tables**: `main.loans` (the loans table), `information_schema.*` (snapshots, schemata, files)
+- **Snapshots**: Each `add-quarter` chunk creates a snapshot (500k rows per chunk)
+- **Time travel**: Query at any snapshot point
+
+## Adding Data
+
+Use `add-quarter` (streaming, 500k-row chunks):
+
+```bash
+./add-quarter --data-dir ./data --parquet 2024Q1.parquet --max-memory-mb 4000
+# --max-memory-mb 0 = no limit
+# Uses execute_stream() → append_table() per chunk — never loads all rows into memory
+```
+
+**Do not run `add-quarter` while `flight-sql-server` is running.** The file lock (`data/.lock`) enforces this.
+
+## Node Proxy
+
+`public/server.mjs` — a lightweight Node.js proxy that:
+
+- Serves static files (login page, query UI)
+- Password gate: `POST /login` validates against `APP_PASSWORD` env var
+- gRPC-web proxy: forwards `/arrow.flight.protocol.FlightService/*` to `:50051`
+- Auth: checks `auth` cookie or `x-auth-token` header on gRPC-web requests
+- CORS: permissive for local/dev use
+
+## Query Performance
+
+~751M rows, 32 quarters. Typical queries:
+
+| Query | Rows | Time |
+|-------|------|------|
+| `count(*)` | 1 | ~500ms |
+| `WHERE property_state='PA' LIMIT 10` | 10 | ~80ms |
+| `avg(original_upb) GROUP BY year` | 8 | ~2s |
+
+## File Locking
+
+`src/lock.rs` — prevents concurrent `flight-sql-server` + `add-quarter`:
+
+- **Shared lock** (`flock` LOCK_SH): flight-server holds while running
+- **Exclusive lock** (`flock` LOCK_EX): add-quarter acquires before writing
+- **Crash-safe**: OS releases on process exit
+- **Error messages**: Shows which PID holds the conflicting lock
+
+```rust
+// flight-server
+let _lock = Lock::read(&data_dir)?;  // shared, allows other readers
+
+// add-quarter
+let _lock = Lock::write(&data_dir)?;  // exclusive, blocks readers
 ```
