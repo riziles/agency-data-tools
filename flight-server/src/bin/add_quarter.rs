@@ -9,6 +9,9 @@ use datafusion_ducklake::{DuckLakeTableWriter, SqliteMetadataWriter};
 use futures::StreamExt;
 use object_store::local::LocalFileSystem;
 
+#[path = "../lock.rs"]
+mod lock;
+
 #[derive(Parser)]
 struct Args {
     #[arg(long, default_value = "./data")]
@@ -44,6 +47,9 @@ fn current_memory_mb() -> Option<u64> {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+
+    // Take exclusive lock — fails if flight-server has a shared lock
+    let _lock = lock::Lock::write(&args.data_dir)?;
 
     let catalog_db = args.data_dir.join("catalog.db");
     let conn_str = format!("sqlite:{}?mode=rwc", catalog_db.display());

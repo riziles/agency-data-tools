@@ -14,6 +14,8 @@ use object_store::local::LocalFileSystem;
 use tonic_web::GrpcWebLayer;
 use tower_http::cors::CorsLayer;
 
+mod lock;
+
 #[derive(Parser)]
 struct Args {
     #[arg(long, default_value = "127.0.0.1:50051")]
@@ -30,6 +32,9 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
     std::fs::create_dir_all(&args.data_dir)?;
+
+    // Take shared lock — fails if add-quarter has an exclusive lock
+    let _lock = lock::Lock::read(&args.data_dir)?;
 
     let catalog_db = args.data_dir.join("catalog.db");
     let conn_str = format!("sqlite:{}?mode=rwc", catalog_db.display());
