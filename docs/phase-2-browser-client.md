@@ -30,20 +30,20 @@ public/
 Browser                          Node proxy :8765                   Flight SQL :50051
   │                                 │                                  │
   │  GET /                          │                                  │
-  │ ────────────────────────────▶   │  auth? → login page or app      │
-  │ ◀────────────────────────────   │                                  │
+  │ ─────────────────────────────▶ │  auth? → login page or app       │
+  │ ◀────────────────────────────  │                                  │
   │                                 │                                  │
   │  POST /login                    │                                  │
-  │ ────────────────────────────▶   │  validate APP_PASSWORD           │
-  │ ◀──── Set-Cookie: auth=token    │                                  │
+  │ ─────────────────────────────▶ │  validate APP_PASSWORD           │
+  │ ◀──── Set-Cookie: auth=token   │                                  │
   │                                 │                                  │
   │  POST /arrow.flight.protocol.   │                                  │
   │    FlightService/DoPut          │                                  │
   │  Cookie: auth=token             │                                  │
-  │ ────────────────────────────▶   │  gRPC-web → gRPC ────────────▶  │
+  │ ─────────────────────────────▶ │  gRPC-web → gRPC ─────────────▶ │
   │                                 │                                  │  DataFusion
   │  Arrow RecordBatches            │                                  │  DuckLake
-  │ ◀────────────────────────────   │ ◀─────────────────────────────── │
+  │ ◀────────────────────────────  │ ◀────────────────────────────── │
 ```
 
 ## Auth Flow
