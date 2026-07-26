@@ -5,7 +5,7 @@ Full pipeline for Fannie Mae single-family loan performance data: fetch, convert
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     A[Fannie Mae API] -->|OAuth2| B[Local Disk]
     A -->|signed S3 URL| B
     A -->|ZIP stream| B
