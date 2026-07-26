@@ -16,11 +16,14 @@ RUN curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/
 
 WORKDIR /app
 
-# ── Copy everything ──
+# ── Copy app (data is bind-mounted at runtime) ──
 COPY target/release/flight-sql-server /app/
-COPY data/ /app/data/
 COPY public/ /app/public/
 COPY docker-entrypoint.sh /app/
+
+# Seed directory structure for first run on an empty volume
+RUN mkdir -p /app/data
+VOLUME /app/data
 
 RUN chmod +x /app/docker-entrypoint.sh
 

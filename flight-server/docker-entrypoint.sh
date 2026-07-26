@@ -5,7 +5,10 @@ echo "=== Fannie Mae Flight SQL ==="
 
 # ── Start Flight SQL server ──
 echo "[1/2] Starting Flight SQL on :50051..."
-/app/flight-sql-server --data-dir /app/data --parquet /app/data/2024Q1.parquet &
+
+# --parquet is only used for first-time catalog initialization.
+# With a bind mount that already has catalog.db, it's harmless.
+/app/flight-sql-server --data-dir /app/data --parquet /app/data/seed.parquet &
 FLIGHT_PID=$!
 
 # Wait until Flight SQL is accepting connections
