@@ -5,29 +5,27 @@ Full pipeline for Fannie Mae single-family loan performance data: fetch, convert
 ## Architecture
 
 ```
-Fannie Mae API                    Local disk                     Browser
-  │                                 │                              │
-  │  OAuth2 → signed S3 URL         │                              │
-  │ ─────────────────────────────▶ │                              │
-  │  ZIP download (~50MB–1.8GB)     │                              │
-  │ ◀───────────────────────────── │                              │
-  │                                 │                              │
-  │                                 │  ingest (DataFusion 54)      │
-  │                                 │  CSV → Parquet (33:1)        │
-  │                                 │  ↓                           │
-  │                                 │  add-quarter (streaming)     │
-  │                                 │  Parquet → DuckLake catalog  │
-  │                                 │  ↓                           │
-  │                                 │  Flight SQL server :50051    │
-  │                                 │  DuckLake catalog (SQLite)   │
-  │                                 │  ↓                           │
-  │                                 │  Node proxy :8765            │
-  │                                 │  (password gate, gRPC-web)   │
-  │                                 │ ──────────────────────────▶ │
-  │                                 │                              │  @sparrowflight/js
-  │                                 │  Arrow RecordBatches         │  SQL editor
-  │                                 │ ◀────────────────────────── │  Dark theme
-  │                                 │                              │  ~500ms queries
+                       Fannie Mae API         Local disk            Browser
+                         │                      │                     │
+  OAuth2 + signed URL ─────────────────────▶  │                     │
+  signed S3 URL ◀───────────────────────────  │                     │
+  GET ZIP ─────────────────────────────────▶  │                     │
+  ZIP stream ◀──────────────────────────────  │                     │
+                         │                      │                     │
+                         │                      │  ingest (DF 54)     │
+                         │                      │  CSV → Parquet      │
+                         │                      │  ↓                  │
+                         │                      │  add-quarter        │
+                         │                      │  → DuckLake catalog │
+                         │                      │  ↓                  │
+                         │                      │  Flight SQL :50051  │
+                         │                      │  ↓                  │
+                         │                      │  Node proxy :8765   │
+                         │                      │  (password gate)    │
+                         │                      │ ◀─────────────  │  SQL query
+                         │                      │ ─────────────▶  │  Arrow batches
+                         │                      │                     │  @sparrowflight/js
+                         │                      │                     │  ~500ms queries
 ```
 
 ## Quick Start
