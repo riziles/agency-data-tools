@@ -4,28 +4,22 @@ Full pipeline for Fannie Mae single-family loan performance data: fetch, convert
 
 ## Architecture
 
-```
-                       Fannie Mae API         Local disk            Browser
-                         │                      │                     │
-  OAuth2 + signed URL ─────────────────────▶  │                     │
-  signed S3 URL ◀───────────────────────────  │                     │
-  GET ZIP ─────────────────────────────────▶  │                     │
-  ZIP stream ◀──────────────────────────────  │                     │
-                         │                      │                     │
-                         │                      │  ingest (DF 54)     │
-                         │                      │  CSV → Parquet      │
-                         │                      │  ↓                  │
-                         │                      │  add-quarter        │
-                         │                      │  → DuckLake catalog │
-                         │                      │  ↓                  │
-                         │                      │  Flight SQL :50051  │
-                         │                      │  ↓                  │
-                         │                      │  Node proxy :8765   │
-                         │                      │  (password gate)    │
-                         │                      │ ◀─────────────  │  SQL query
-                         │                      │ ─────────────▶  │  Arrow batches
-                         │                      │                     │  @sparrowflight/js
-                         │                      │                     │  ~500ms queries
+```mermaid
+flowchart LR
+    A[Fannie Mae API] -->|OAuth2| B[Local Disk]
+    A -->|signed S3 URL| B
+    A -->|ZIP stream| B
+    
+    subgraph B[Local Disk]
+        I[ingest<br/>CSV → Parquet]
+        AQ[add-quarter<br/>streaming]
+        FS[Flight SQL<br/>:50051]
+        NP[Node proxy<br/>:8765]
+        I --> AQ --> FS --> NP
+    end
+    
+    C[Browser] -->|SQL query| NP
+    NP -->|Arrow RecordBatches| C
 ```
 
 ## Quick Start
