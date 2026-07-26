@@ -5,14 +5,14 @@ Full pipeline for Fannie Mae single-family loan performance data: fetch, convert
 ## Architecture
 
 ```
-Fannie Mae API                    Local disk                      Browser
-  │                                 │                               │
-  │  OAuth2 → signed S3 URL         │                               │
-  │ ─────────────────────────────▶  │                               │
-  │  ZIP download (~50MB–1.8GB)     │                               │
-  │ ◀─────────────────────────────  │                               │
-  │                                 │                               │
-  │                                 │  ingest (DataFusion 54)       │
+Fannie Mae API                    Local disk                     Browser
+  │                                 │                              │
+  │  OAuth2 → signed S3 URL         │                              │
+  │ ─────────────────────────────▶ │                              │
+  │  ZIP download (~50MB–1.8GB)     │                              │
+  │ ◀───────────────────────────── │                              │
+  │                                 │                              │
+  │                                 │  ingest (DataFusion 54)      │
   │                                 │  CSV → Parquet (33:1)        │
   │                                 │  ↓                           │
   │                                 │  add-quarter (streaming)     │
@@ -23,11 +23,11 @@ Fannie Mae API                    Local disk                      Browser
   │                                 │  ↓                           │
   │                                 │  Node proxy :8765            │
   │                                 │  (password gate, gRPC-web)   │
-  │                                 │ ───────────────────────────▶ │
-  │                                 │                               │  @sparrowflight/js
-  │                                 │  Arrow RecordBatches          │  SQL editor
-  │                                 │ ◀───────────────────────────  │  Dark theme
-  │                                 │                               │  ~500ms queries
+  │                                 │ ──────────────────────────▶ │
+  │                                 │                              │  @sparrowflight/js
+  │                                 │  Arrow RecordBatches         │  SQL editor
+  │                                 │ ◀────────────────────────── │  Dark theme
+  │                                 │                              │  ~500ms queries
 ```
 
 ## Quick Start
