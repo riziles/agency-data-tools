@@ -95,7 +95,7 @@ HTML table rendered
 ~140 GB total
 ├── flight-server/data/     16 GB   DuckLake catalog + datalake chunks
 ├── test-data/               7 GB   Source Parquet backups
-└── fannie_*.zip            17 GB   Downloaded ZIP caches
+├── zip-backup/fannie_*.zip   17 GB   Downloaded ZIP caches
 ```
 
 ## Key Numbers

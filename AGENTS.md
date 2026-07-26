@@ -22,7 +22,7 @@ Fannie Mae loan performance data pipeline:
 
 **Fannie Mae rate-limits downloads. Do not repeatedly download the same ZIP or CSV files.**
 
-- The ingestion tool caches to `fannie_{year}_{quarter}.zip` and `fannie_{year}_{quarter}.csv` in the project root
+- The ingestion tool caches to `fannie_{year}_{quarter}.zip` (in `zip-backup/`) and `fannie_{year}_{quarter}.csv` in the project root
 - These cache files are gitignored (`*.zip`, `*.csv` in `.gitignore`)
 - When testing schema/parsing changes, use the `--local-csv` flag:
   ```bash
@@ -116,7 +116,7 @@ docker run -d -p 8765:8765 -v ./data:/app/data -e APP_PASSWORD=demo fannie-fligh
 | `flight-server/Dockerfile` | Docker image (804MB, data bind-mounted) |
 | `flight-server/data/` | DuckLake catalog: catalog.db + datalake/*.parquet |
 | `test-data/*.parquet` | Source Parquet backups (~7 GB total) |
-| `fannie_*.zip` | Downloaded ZIP caches (~17 GB, gitignored) |
+| `zip-backup/fannie_*.zip` | Downloaded ZIP caches (~17 GB, gitignored) |
 
 ## Fannie Mae API
 

@@ -175,7 +175,7 @@ async fn main() -> Result<()> {
 
         let year = &cli.year;
         let quarter = &cli.quarter;
-        let zip_path = format!("fannie_{year}_{quarter}.zip");
+        let zip_path = format!("zip-backup/fannie_{year}_{quarter}.zip");
         let csv_path = format!("fannie_{year}_{quarter}.csv");
 
         // Skip download+extract if CSV already cached on disk
