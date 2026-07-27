@@ -124,7 +124,7 @@
 <style>
   .viewer-page { display: flex; flex-direction: column; height: 100vh; background: var(--bg); }
   header { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 1.2rem; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-  .back-link { color: var(--primary); text-decoration: none; font-size: 0.9rem; }
+  .back-link { color: #94a3b8; text-decoration: none; font-size: 0.9rem; }
   .back-link:hover { text-decoration: underline; }
   .meta { display: flex; gap: 1rem; font-size: 0.8rem; color: var(--muted); }
   .row-count { color: var(--text); font-weight: 600; }
@@ -132,5 +132,16 @@
   .error { color: var(--error); }
   .viewer-wrapper { flex: 1; overflow: hidden; }
   .viewer-wrapper.hidden { visibility: hidden; }
-  :global(perspective-viewer) { --pivot-background: var(--bg); --plugin--background: var(--bg); }
+  :global(perspective-viewer) {
+    --pivot-background: var(--bg);
+    --plugin--background: var(--bg);
+    --column-header--color: #f8fafc;
+    --column-header--background: #1e293b;
+    --row-header--color: #94a3b8;
+    --cell--color: #e2e8f0;
+    --cell--border-color: rgba(255, 255, 255, 0.08);
+    --column-header--border-color: #334155;
+    --cell--padding: 8px 12px;
+    font-size: 13px;
+  }
 </style>
