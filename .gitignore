@@ -41,3 +41,5 @@ flight-server/data/.lock
 /query/
 dashboard/build
 wasm-query/pkg/
+test-results/
+playwright-report/
