@@ -124,6 +124,10 @@ createServer(async (req, res) => {
     ct.includes("application/proto") ||
     (req.url || "").startsWith("/arrow.flight.")
   ) {
+    // Log the query request
+    const ts = new Date().toISOString();
+    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "?";
+    console.log(`[${ts}] query from ${ip}`);
     const opts = {
       hostname: "127.0.0.1",
       port: FLIGHT_PORT,
