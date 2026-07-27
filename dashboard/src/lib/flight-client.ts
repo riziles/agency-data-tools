@@ -48,8 +48,9 @@ export function validateQuery(sql: string): string | null {
   if (!upper) return 'Query is empty';
   if (!upper.startsWith('SELECT')) return 'Only SELECT queries are allowed';
 
-  // Require GROUP BY or LIMIT for non-trivial queries
-  if (!upper.includes('GROUP BY') && !upper.includes('LIMIT')) {
+  // Require GROUP BY, LIMIT, or aggregate-only query (like count(*))
+  const hasAgg = /\b(COUNT|SUM|AVG|MIN|MAX)\s*\(/i.test(upper);
+  if (!upper.includes('GROUP BY') && !upper.includes('LIMIT') && !hasAgg) {
     return 'Query must include GROUP BY or LIMIT clause';
   }
 
