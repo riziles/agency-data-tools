@@ -17,7 +17,7 @@
     <table>
       <tbody>
         <tr><th>Protocol</th><td>Apache Arrow Flight SQL (gRPC)</td></tr>
-        <tr><th>Transport</th><td>gRPC-web (HTTP/1.1) via Node proxy on :8765</td></tr>
+        <tr><th>Transport</th><td>gRPC-web (HTTP/1.1) via Node proxy on same origin</td></tr>
         <tr><th>Backend</th><td>Flight SQL :50051 (DataFusion 54 + DuckLake 0.5)</td></tr>
         <tr><th>Auth</th><td>Password gate (cookie or <code>x-auth-token</code> header)</td></tr>
       </tbody>
@@ -31,7 +31,7 @@
     <pre><code>import &#123; connect &#125; from '@sparrowflight/js';
 
 const client = await connect(&#123;
-  endpoint: 'http://localhost:8765',
+  endpoint: '/',  // same origin — works locally and through Cloudflare Tunnel
   headers: &#123; 'x-auth-token': 'demo' &#125;,
 &#125;);
 
@@ -40,13 +40,15 @@ const &#123; table &#125; = await client.query(
 );</code></pre>
 
     <h3>gRPC (native)</h3>
-    <pre><code>grpcurl -plaintext \
+    <pre><code># Direct to Flight SQL (bypasses auth proxy)
+grpcurl -plaintext \
   -d '&#123;"query":"SELECT count(*) FROM ducklake.main.loans"&#125;' \
   localhost:50051 \
   arrow.flight.protocol.FlightService/GetFlightInfo</code></pre>
 
     <h3>Python</h3>
-    <pre><code>from flightsql import FlightSQLClient
+    <pre><code># Direct Flight SQL (bypasses auth proxy)
+from flightsql import FlightSQLClient
 
 client = FlightSQLClient(
     host='localhost',
