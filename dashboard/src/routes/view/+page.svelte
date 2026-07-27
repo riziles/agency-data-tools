@@ -3,7 +3,8 @@
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { getQueryResult } from '$lib/stores.svelte';
-  import { tableToIPC } from 'apache-arrow';
+  import { tableToIPC, tableFromArrays } from 'apache-arrow';
+  import type { Table } from 'apache-arrow';
 
   // v3.8 Perspective — import WASM URLs via Vite's ?url
   import perspective, { init_server } from '@finos/perspective';
@@ -39,7 +40,10 @@
       }
 
       // Convert Arrow to IPC buffer
-      const ipcData = tableToIPC(result.table);
+      // DataFusion 54 outputs Utf8View columns — Perspective doesn't support those.
+      // Convert to plain Arrow types first.
+      const cleanTable = convertUtf8View(result.table);
+      const ipcData = tableToIPC(cleanTable);
       const buffer = ipcData.buffer.slice(ipcData.byteOffset, ipcData.byteOffset + ipcData.byteLength);
 
       // Create Perspective worker + table
@@ -64,6 +68,29 @@
       loading = false;
     }
   });
+
+  /** Convert Utf8View columns to Utf8 — Perspective v3.8 doesn't support Utf8View */
+  function convertUtf8View(table: Table): Table {
+    const fields = table.schema.fields;
+    const needsFix = fields.some((f) => f.type.toString() === 'Utf8View');
+    if (!needsFix) return table;
+
+    const columns: Record<string, any[]> = {};
+    for (const field of fields) {
+      const col = table.getChild(field.name);
+      if (!col) continue;
+      if (field.type.toString() === 'Utf8View') {
+        const arr: string[] = [];
+        for (let i = 0; i < table.numRows; i++) {
+          arr.push(String(col.get(i) ?? ''));
+        }
+        columns[field.name] = arr;
+      } else {
+        columns[field.name] = col;
+      }
+    }
+    return tableFromArrays(columns);
+  }
 </script>
 
 <svelte:head>
