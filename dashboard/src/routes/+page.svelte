@@ -1,233 +1,195 @@
 <script lang="ts">
   import '../app.css';
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { FlightClient, validateQuery } from '$lib/flight-client';
-import { setQueryResult } from '$lib/stores.svelte.ts';
-
-  let client = $state<FlightClient | null>(null);
-  let connecting = $state(true);
-  let connectionError = $state('');
-
-  let sql = $state('');
-  let running = $state(false);
-  let queryError = $state('');
-
-  onMount(async () => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get('token') || 'demo';
-      client = new FlightClient(token);
-      await client.init();
-    } catch (e: any) {
-      connectionError = e.message || String(e);
-    } finally {
-      connecting = false;
-    }
-  });
-
-  async function run() {
-    if (!client || !sql.trim()) return;
-    const validation = validateQuery(sql);
-    if (validation) {
-      queryError = validation;
-      return;
-    }
-    running = true;
-    queryError = '';
-    try {
-      const result = await client.query(sql);
-      setQueryResult(result.table, sql, result.elapsedMs);
-      await goto('/view');
-    } catch (e: any) {
-      queryError = e.message || String(e);
-    } finally {
-      running = false;
-    }
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      run();
-    }
-  }
 </script>
 
-<div class="app">
+<svelte:head>
+  <title>Fannie Mae Loan Performance — DataFusion Analytics</title>
+</svelte:head>
+
+<div class="landing">
   <header>
     <h1>🏠 Fannie Mae Loan Performance</h1>
-    <span class="subtitle">751M rows · 32 quarters · DataFusion Flight SQL</span>
+    <p class="subtitle">751 million rows · 32 quarters (2018–2025) · Apache DataFusion + DuckLake</p>
   </header>
 
-  {#if connecting}
-    <div class="status">Connecting to Flight SQL server...</div>
-  {:else if connectionError}
-    <div class="error">Connection failed: {connectionError}</div>
-  {:else}
-    <div class="editor">
-      <div class="editor-header">
-        <span class="hint">Ctrl+Enter to run</span>
-      </div>
-      <textarea
-        bind:value={sql}
-        onkeydown={handleKeydown}
-        placeholder="SELECT ... FROM ducklake.main.loans ..."
-        disabled={running}
-        spellcheck="false"
-      ></textarea>
-      <div class="editor-footer">
-        <button class="run-btn" onclick={run} disabled={running || !sql.trim()}>
-          {running ? 'Running...' : 'Run Query'}
-        </button>
-      </div>
-      {#if queryError}
-        <div class="error-msg">{queryError}</div>
-      {/if}
-    </div>
+  <div class="cards">
+    <a href="/query" class="card">
+      <span class="card-icon">⚡</span>
+      <h2>Query Editor</h2>
+      <p>Write SQL queries against the full dataset. Results open in a Perspective pivot table with drag-and-drop dimensions, charts, and exports.</p>
+      <span class="card-link">Open →</span>
+    </a>
 
-    <div class="examples">
-      <h2>Example Queries</h2>
-      <ul>
-        <li><button onclick={() => sql = "SELECT count(*) AS total FROM ducklake.main.loans"}>Total row count</button></li>
-        <li><button onclick={() => sql = "SELECT property_state, count(*) AS loans, round(avg(original_upb), 0) AS avg_upb\nFROM ducklake.main.loans\nGROUP BY property_state\nORDER BY loans DESC\nLIMIT 10"}>Loans by state</button></li>
-        <li><button onclick={() => sql = "SELECT \n  round(borrower_credit_score_at_origination / 50) * 50 AS score_bucket,\n  count(*) AS loans\nFROM ducklake.main.loans\nWHERE borrower_credit_score_at_origination > 0\nGROUP BY 1\nORDER BY 1"}>Credit score distribution</button></li>
-        <li><button onclick={() => sql = "SELECT loan_purpose, count(*) AS loans, round(avg(original_upb), 0) AS avg_upb\nFROM ducklake.main.loans\nGROUP BY loan_purpose\nORDER BY loans DESC"}>Loan purpose breakdown</button></li>
-      </ul>
+    <a href="/docs" class="card">
+      <span class="card-icon">📖</span>
+      <h2>API Docs</h2>
+      <p>Flight SQL endpoint reference, connection examples, schema documentation, and query guard-rails.</p>
+      <span class="card-link">View →</span>
+    </a>
+  </div>
+
+  <section class="about">
+    <h2>About</h2>
+    <p>
+      This is a local-first analytics pipeline for Fannie Mae single-family loan performance data.
+      The full dataset — 751 million rows across 32 quarters from 2018 to 2025 — is stored in a
+      <strong>DuckLake</strong> catalog backed by Apache Parquet files and queried through an
+      <strong>Apache DataFusion Flight SQL</strong> server.
+    </p>
+    <p>
+      The browser connects via gRPC-web. Queries aggregate server-side over the full dataset
+      (typically ~500ms for <code>count(*)</code>) and return Apache Arrow record batches.
+      Results are visualized using Perspective.js with pivot tables, charts, and filtering.
+    </p>
+
+    <h3>Stack</h3>
+    <div class="stack">
+      <span>DataFusion 54</span>
+      <span>DuckLake 0.5</span>
+      <span>Arrow Flight SQL</span>
+      <span>Perspective 3.8</span>
+      <span>Svelte 5</span>
+      <span>Docker</span>
     </div>
-  {/if}
+  </section>
+
+  <footer>
+    <a href="https://github.com/your-org/agency-data-tools">GitHub</a>
+    <span>·</span>
+    <a href="https://datafusion.apache.org">Apache DataFusion</a>
+    <span>·</span>
+    <a href="https://perspective.finos.org">Perspective</a>
+  </footer>
 </div>
 
 <style>
-  .app {
-    max-width: 900px;
+  .landing {
+    max-width: 800px;
     margin: 0 auto;
-    padding: 2rem;
+    padding: 3rem 2rem;
   }
 
   header {
-    margin-bottom: 2rem;
+    text-align: center;
+    margin-bottom: 3rem;
+  }
+
+  header h1 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
   }
 
   .subtitle {
     color: var(--muted);
-    font-size: 0.9rem;
-  }
-
-  .status {
-    color: var(--muted);
-    padding: 2rem;
-    text-align: center;
-  }
-
-  .error {
-    background: rgba(233, 69, 96, 0.1);
-    color: var(--error);
-    padding: 1rem;
-    border-radius: 8px;
-    border: 1px solid var(--error);
-  }
-
-  .editor {
-    background: var(--surface);
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    overflow: hidden;
-  }
-
-  .editor-header {
-    display: flex;
-    justify-content: flex-end;
-    padding: 0.5rem 1rem;
-    background: rgba(0, 0, 0, 0.2);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .hint {
-    font-size: 0.75rem;
-    color: var(--muted);
-  }
-
-  textarea {
-    width: 100%;
-    min-height: 200px;
-    background: transparent;
-    color: var(--text);
-    border: none;
-    padding: 1rem;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-    font-size: 0.9rem;
-    line-height: 1.6;
-    resize: vertical;
-    outline: none;
-  }
-
-  .editor-footer {
-    display: flex;
-    justify-content: flex-end;
-    padding: 0.75rem 1rem;
-    background: rgba(0, 0, 0, 0.2);
-    border-top: 1px solid var(--border);
-  }
-
-  .run-btn {
-    background: var(--primary);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 0.5rem 1.5rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.15s;
-  }
-
-  .run-btn:hover:not(:disabled) {
-    opacity: 0.85;
-  }
-
-  .run-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .error-msg {
-    color: var(--error);
-    padding: 0.75rem 1rem;
-    font-size: 0.85rem;
-    background: rgba(233, 69, 96, 0.08);
-    border-top: 1px solid rgba(233, 69, 96, 0.2);
-  }
-
-  .examples {
-    margin-top: 2rem;
-  }
-
-  .examples h2 {
     font-size: 1rem;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 3rem;
+  }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.2s, transform 0.15s;
+  }
+
+  .card:hover {
+    border-color: var(--primary);
+    transform: translateY(-2px);
+  }
+
+  .card-icon {
+    font-size: 2rem;
     margin-bottom: 0.75rem;
   }
 
-  .examples ul {
-    list-style: none;
+  .card h2 {
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+    color: var(--text);
+  }
+
+  .card p {
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .card-link {
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-top: 1rem;
+  }
+
+  .about {
+    margin-bottom: 2rem;
+  }
+
+  .about h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .about h3 {
+    font-size: 1rem;
+    margin: 1.5rem 0 0.75rem;
+  }
+
+  .about p {
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: 0.75rem;
+  }
+
+  .about code {
+    background: var(--surface);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.85em;
+  }
+
+  .stack {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
   }
 
-  .examples button {
+  .stack span {
     background: var(--surface);
-    color: var(--text);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 0.4rem 0.8rem;
+    padding: 0.3rem 0.8rem;
     font-size: 0.8rem;
-    cursor: pointer;
-    transition: border-color 0.15s;
-    white-space: nowrap;
+    color: var(--muted);
   }
 
-  .examples button:hover {
-    border-color: var(--primary);
+  footer {
+    text-align: center;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+
+  footer a {
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  footer a:hover {
+    color: var(--text);
   }
 </style>
