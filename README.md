@@ -179,4 +179,4 @@ Copy `.env.example` to `.env` and fill in:
 
 ## License
 
-MIT
+Refer to [Fannie Mae's website](https://capitalmarkets.fanniemae.com/credit-risk-transfer/single-family-credit-risk-transfer/fannie-mae-single-family-loan-performance-data) for all data licensing questions.
