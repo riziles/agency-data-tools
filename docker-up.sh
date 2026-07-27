@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
-# Start the Fannie Mae Flight SQL server in Docker
-# Usage: ./docker-up.sh [password] [--tunnel]
-#   password  - APP_PASSWORD (default: demo)
-#   --tunnel  - enable Cloudflare Tunnel for public access
+# Start the Fannie Mae Flight SQL server
+# Usage: ./docker-up.sh [password] [--tunnel] [--dashboard]
+#   password    - APP_PASSWORD (default: demo)
+#   --tunnel    - enable Cloudflare Tunnel for public access
+#   --dashboard - also start the SvelteKit dashboard on :5173
 
 set -e
 cd "$(dirname "$0")"
 
 PASSWORD="${APP_PASSWORD:-demo}"
 TUNNEL=0
+DASHBOARD=0
 
 for arg in "$@"; do
   case "$arg" in
     --tunnel|-t) TUNNEL=1 ;;
+    --dashboard|-d) DASHBOARD=1 ;;
     *) PASSWORD="$arg" ;;
   esac
 done
@@ -42,3 +45,24 @@ sleep 3
 echo ""
 echo "Ready: http://localhost:8765"
 docker logs fannie-flight 2>&1 | grep -E "Serving|Tunnel|snapshot" || true
+
+# ── Dashboard ──
+if [ "$DASHBOARD" = "1" ]; then
+  if [ ! -d "$(pwd)/dashboard/node_modules" ]; then
+    echo ""
+    echo "📦 Installing dashboard dependencies..."
+    (cd dashboard && pnpm install)
+  fi
+
+  echo ""
+  echo "🎛  Starting dashboard on http://localhost:5173"
+  cd dashboard && pnpm dev &
+  DASHBOARD_PID=$!
+  echo "   Dashboard PID: $DASHBOARD_PID"
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  App:       http://localhost:8765"
+  echo "  Dashboard: http://localhost:5173"
+  echo "  Auth:      password = $PASSWORD"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+fi
