@@ -61,6 +61,13 @@
         theme: 'Pro Dark',
         settings: false,
         columns,
+        // Right-align numeric columns
+        columns_config: columns.reduce((acc, col) => {
+          if (col === 'loans' || col === 'avg_upb' || col === 'total' || col === 'cnt' || col === 'count') {
+            acc[col] = { number_align: 'right' as any };
+          }
+          return acc;
+        }, {} as Record<string, any>),
       });
     } catch (e: any) {
       error = e.message || String(e);
@@ -135,13 +142,13 @@
   :global(perspective-viewer) {
     --pivot-background: var(--bg);
     --plugin--background: var(--bg);
-    --column-header--color: #f8fafc;
-    --column-header--background: #1e293b;
+    --column-header--color: #e2e8f0;
+    --column-header--background: #1a2332;
     --row-header--color: #94a3b8;
-    --cell--color: #e2e8f0;
-    --cell--border-color: rgba(255, 255, 255, 0.08);
-    --column-header--border-color: #334155;
-    --cell--padding: 8px 12px;
+    --cell--color: #60a5fa;
+    --cell--border-color: rgba(255, 255, 255, 0.04);
+    --column-header--border-color: rgba(255, 255, 255, 0.06);
+    --cell--padding: 12px 14px;
     font-size: 13px;
   }
 </style>
