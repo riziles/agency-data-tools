@@ -39,15 +39,15 @@ const &#123; table &#125; = await client.query(
   "SELECT count(*) FROM ducklake.main.loans"
 );</code></pre>
 
-    <h3>gRPC (native)</h3>
-    <pre><code># Direct to Flight SQL (bypasses auth proxy)
+    <h3>gRPC (local only)</h3>
+    <pre><code># Direct gRPC — only works on the same machine
 grpcurl -plaintext \
   -d '&#123;"query":"SELECT count(*) FROM ducklake.main.loans"&#125;' \
   localhost:50051 \
   arrow.flight.protocol.FlightService/GetFlightInfo</code></pre>
 
-    <h3>Python</h3>
-    <pre><code># Direct Flight SQL (bypasses auth proxy)
+    <h3>Python (local only)</h3>
+    <pre><code># Direct gRPC — only works on the same machine
 from flightsql import FlightSQLClient
 
 client = FlightSQLClient(
