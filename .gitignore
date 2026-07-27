@@ -40,3 +40,4 @@ Thumbs.db
 flight-server/data/.lock
 /query/
 dashboard/build
+wasm-query/pkg/
