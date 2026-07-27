@@ -92,8 +92,8 @@
       <ul>
         <li><button onclick={() => sql = "SELECT count(*) AS total FROM ducklake.main.loans"}>Total row count</button></li>
         <li><button onclick={() => sql = "SELECT property_state, count(*) AS loans, round(avg(original_upb), 0) AS avg_upb\nFROM ducklake.main.loans\nGROUP BY property_state\nORDER BY loans DESC\nLIMIT 10"}>Loans by state</button></li>
-        <li><button onclick={() => sql = "SELECT \n  round(borrower_credit_score_at_origination / 50) * 50 AS score_bucket,\n  count(*) AS loans\nFROM ducklake.main.loans\nWHERE borrower_credit_score_at_origination > 0\nGROUP BY 1\nORDER BY 1"}>Credit score distribution</button></li>
-        <li><button onclick={() => sql = "SELECT loan_purpose, count(*) AS loans, round(avg(original_upb), 0) AS avg_upb\nFROM ducklake.main.loans\nGROUP BY loan_purpose\nORDER BY loans DESC"}>Loan purpose breakdown</button></li>
+        <li><button onclick={() => sql = "SELECT \n  substr(origination_date, 1, 4) || '-' || substr(origination_date, 5, 2) AS orig_month,\n  count(*) AS loans,\n  round(sum(original_upb) / 1e9, 2) AS total_upb_billions,\n  round(avg(original_upb), 0) AS avg_upb\nFROM ducklake.main.loans\nWHERE origination_date IS NOT NULL\nGROUP BY 1\nORDER BY 1"}>UPB by origination month</button></li>
+        <li><button onclick={() => sql = "SELECT \n  round(borrower_credit_score_at_origination / 50) * 50 AS score_bucket,\n  count(*) AS loans,\n  round(avg(original_upb), 0) AS avg_upb\nFROM ducklake.main.loans\nWHERE borrower_credit_score_at_origination > 0\nGROUP BY 1\nORDER BY 1"}>Credit score distribution</button></li>
       </ul>
     </div>
   {/if}

@@ -163,8 +163,15 @@ createServer(async (req, res) => {
     });
     res.end(data);
   } catch {
-    res.writeHead(404);
-    res.end("404");
+    // SPA fallback: serve index.html for client-side routes (/query, /view, /docs)
+    try {
+      const data = await readFile(join(__dirname, "index.html"));
+      res.writeHead(200, { "Content-Type": "text/html", "Access-Control-Allow-Origin": "*" });
+      res.end(data);
+    } catch {
+      res.writeHead(404);
+      res.end("404");
+    }
   }
 }).listen(PORT, () => {
   console.log(`Serving on http://localhost:${PORT}  (password: ${PASSWORD})`);
