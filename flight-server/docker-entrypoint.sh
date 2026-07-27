@@ -5,10 +5,7 @@ echo "=== Fannie Mae Flight SQL ==="
 
 # ── Start Flight SQL server ──
 echo "[1/2] Starting Flight SQL on :50051..."
-
-# --parquet is only used for first-time catalog initialization.
-# With a bind mount that already has catalog.db, it's harmless.
-/app/flight-sql-server --data-dir /app/data --parquet /app/data/seed.parquet &
+/app/flight-sql-server --data-dir /app/data &
 FLIGHT_PID=$!
 
 # Wait until Flight SQL is accepting connections
@@ -22,9 +19,9 @@ for i in $(seq 1 30); do
   echo -n "."
 done
 
-# ── Start Node proxy ──
-echo "[2/2] Starting proxy on :8765 (password: ${APP_PASSWORD})..."
-cd /app/public
+# ── Start SvelteKit + proxy server ──
+echo "[2/2] Starting server on :8765 (password: ${APP_PASSWORD})..."
+cd /app
 APP_PASSWORD="${APP_PASSWORD}" node server.mjs &
 PROXY_PID=$!
 

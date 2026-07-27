@@ -175,6 +175,7 @@ Copy `.env.example` to `.env` and fill in:
 
 ## TODO
 
+- [ ] **Save queries** — After SvelteKit consolidation: server-side SQLite CRUD with prepared statements, or localStorage for zero-server version.
 - [ ] **Consolidate Node proxy into SvelteKit** — Replace `server.mjs` (gRPC-web proxy + auth + static serving) with SvelteKit `+server.ts` endpoints and `hooks.server.ts` auth. One process, one port, no static build step.
 - [ ] **Fix docs page URLs** — Connection examples hardcode `http://localhost:8765`. Replace with relative/generic references so they make sense when accessed via Cloudflare Tunnel.
 - [ ] **Permanent Cloudflare Tunnel URL** — Ephemeral `*.trycloudflare.com` quick tunnels rotate on restart. Free tier option: named tunnel + Cloudflare-owned domain gives stable subdomain (`fannie-mae.example.com`). Requires Cloudflare account + domain in your account.

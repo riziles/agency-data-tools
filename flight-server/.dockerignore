@@ -10,9 +10,7 @@ README.md
 .pids
 .server-pids
 
-# Build dependencies
-public/node_modules/.cache
-public/.playwright-cli
-
-# Smoke test files
-public/parquet-smoke*.html
+# Old public/ (no longer used)
+public/
+# Bind-mounted data (huge, don't copy)
+flight-server/data/

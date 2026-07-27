@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Start the Fannie Mae Flight SQL server
-# Usage: ./docker-up.sh [password] [--tunnel] [--dashboard]
+# Usage: ./docker-up.sh [password] [--tunnel] [--dashboard] [--dev]
 #   password    - APP_PASSWORD (default: demo)
 #   --tunnel    - enable Cloudflare Tunnel for public access
-#   --dashboard - also start the SvelteKit dashboard on :5173
+#   --dashboard - build SvelteKit dashboard and bake into Docker image
+#   --dev       - also start Vite dev server on :5173 for hot-reload
 
 set -e
 cd "$(dirname "$0")"
@@ -11,11 +12,13 @@ cd "$(dirname "$0")"
 PASSWORD="${APP_PASSWORD:-demo}"
 TUNNEL=0
 DASHBOARD=0
+DEV=0
 
 for arg in "$@"; do
   case "$arg" in
     --tunnel|-t) TUNNEL=1 ;;
     --dashboard|-d) DASHBOARD=1 ;;
+    --dev) DEV=1 ;;
     *) PASSWORD="$arg" ;;
   esac
 done
@@ -32,14 +35,35 @@ if [ "$TUNNEL" = "1" ]; then
   echo "Cloudflare Tunnel: enabled"
 fi
 
-docker rm -f fannie-flight 2>/dev/null || true
+# ── Build flight-server binary if needed ──
+if [ ! -f flight-server/target/release/flight-sql-server ]; then
+  echo "🏗  Building flight-sql-server..."
+  (cd flight-server && cargo build --release)
+fi
 
-PUBLIC_DIR="$(pwd)/flight-server/public"
+# ── Dashboard ──
+if [ "$DASHBOARD" = "1" ]; then
+  if [ ! -d "$(pwd)/dashboard/node_modules" ]; then
+    echo "📦 Installing dashboard dependencies..."
+    (cd dashboard && pnpm install)
+  fi
+  echo "🏗  Building dashboard (adapter-node)..."
+  (cd dashboard && pnpm build)
+fi
+
+# ── Build Docker image ──
+echo "🐳 Building Docker image..."
+docker build \
+  -t fannie-flight:latest \
+  -f flight-server/Dockerfile \
+  .
+
+# ── Start container ──
+docker rm -f fannie-flight 2>/dev/null || true
 
 docker run -d --name fannie-flight \
   -p 8765:8765 \
   -v "$DATA_DIR:/app/data" \
-  -v "$PUBLIC_DIR:/app/public" \
   -e APP_PASSWORD="$PASSWORD" \
   -e TUNNEL="$TUNNEL" \
   fannie-flight:latest
@@ -49,32 +73,15 @@ echo ""
 echo "Ready: http://localhost:8765"
 docker logs fannie-flight 2>&1 | grep -E "Serving|Tunnel|snapshot" || true
 
-# ── Dashboard (build & serve via proxy, or dev mode) ──
-if [ "$DASHBOARD" = "1" ]; then
-  if [ ! -d "$(pwd)/dashboard/node_modules" ]; then
-    echo ""
-    echo "📦 Installing dashboard dependencies..."
-    (cd dashboard && pnpm install)
-  fi
-
-  # Build static and copy into the proxy's public dir so it's served on :8765
-  echo ""
-  echo "🏗  Building dashboard..."
-  (cd dashboard && pnpm build)
-  rm -rf flight-server/public/_app flight-server/public/index.html
-  cp -r dashboard/build/* flight-server/public/
-  echo "   Copied dashboard build → flight-server/public/"
-
+# ── Dev server (optional) ──
+if [ "$DEV" = "1" ]; then
   echo ""
   echo "🎛  Starting dashboard dev on http://localhost:5173"
-  cd dashboard && pnpm dev &
-  DASHBOARD_PID=$!
-  echo "   Dashboard PID: $DASHBOARD_PID"
+  (cd dashboard && pnpm dev) &
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "  App:       http://localhost:8765"
-  echo "  Dashboard: http://localhost:5173 (dev)"
-  echo "             http://localhost:8765 (static, via tunnel)"
+  echo "  Dev:       http://localhost:5173"
   echo "  Auth:      password = $PASSWORD"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 fi

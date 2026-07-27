@@ -1,0 +1,24 @@
+# Rust build artifacts
+**/target/
+!flight-server/target/release/flight-sql-server
+
+# Data directory (bind-mounted, huge)
+flight-server/data/
+
+# Dev files
+.git
+**/README.md
+*.log
+.pid
+.pids
+.server-pids
+
+# Old public/
+flight-server/public/
+
+# Node modules
+**/node_modules/
+
+# Test parquets (huge)
+test-data/
+zip-backup/

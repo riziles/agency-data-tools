@@ -1,19 +1,12 @@
 import { createServer, request } from "node:http";
-import { readFile } from "node:fs/promises";
-import { join, extname } from "node:path";
-import { fileURLToPath } from "node:url";
 
-const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PORT = 8765;
 const FLIGHT_PORT = 50051;
+const SVELTE_PORT = 3000;
 const PASSWORD = process.env.APP_PASSWORD || "demo";
 
-const MIME = {
-  ".html": "text/html",
-  ".js": "application/javascript",
-  ".css": "text/css",
-  ".wasm": "application/wasm",
-};
+// ── Start SvelteKit ──
+const { server: svelteServer } = await import("./dashboard/build/index.js");
 
 function parseCookies(header) {
   const c = {};
@@ -26,10 +19,8 @@ function parseCookies(header) {
 }
 
 function isAuthenticated(req) {
-  // Cookie
   const cookies = parseCookies(req.headers.cookie);
   if (cookies.auth) return true;
-  // Header-based fallback (for gRPC-web clients that don't send cookies)
   if (req.headers["x-auth-token"] === PASSWORD) return true;
   const auth = req.headers["authorization"] || "";
   if (auth === `Bearer ${PASSWORD}`) return true;
@@ -37,7 +28,9 @@ function isAuthenticated(req) {
 }
 
 function serveLogin(res, error) {
-  const errHtml = error ? `<p style="color:#f44336;margin-bottom:1rem">${error}</p>` : "";
+  const errHtml = error
+    ? `<p style="color:#f44336;margin-bottom:1rem">${error}</p>`
+    : "";
   res.writeHead(error ? 401 : 200, { "Content-Type": "text/html" });
   res.end(`<!DOCTYPE html>
 <html lang="en">
@@ -46,7 +39,7 @@ function serveLogin(res, error) {
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Fannie Mae — Login</title>
 <style>
-:root{--bg:#1a1a2e;--surface:#16213e;--primary:#e94560;--text:#eaeaea;--muted:#888;--border:#333;--error:#f44336}
+:root{--bg:#1a1a2e;--surface:#16213e;--primary:#e94560;--text:#eaeaea;--muted:#888;--border:#333}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;align-items:center;justify-content:center;min-height:100vh}
 .box{background:var(--surface);padding:2.5rem;border-radius:12px;text-align:center;min-width:340px;border:1px solid var(--border)}
@@ -61,7 +54,7 @@ button:hover{opacity:0.85}
 <body>
 <div class="box">
   <h1>🏠 Fannie Mae Loan Data</h1>
-  <p class="desc">2024 Q1 &middot; 3,989,404 loans &middot; DataFusion Flight SQL</p>
+  <p class="desc">751M rows &middot; 32 quarters &middot; DataFusion Flight SQL</p>
   ${errHtml}
   <form method="POST" action="/login">
     <input type="password" name="password" placeholder="Password" autofocus>
@@ -72,8 +65,42 @@ button:hover{opacity:0.85}
 </html>`);
 }
 
+function proxyToTarget(targetPort, req, res) {
+  const opts = {
+    hostname: "127.0.0.1",
+    port: targetPort,
+    path: req.url,
+    method: req.method,
+    headers: { ...req.headers, host: `127.0.0.1:${targetPort}` },
+  };
+  const proxy = request(opts, (targetRes) => {
+    res.writeHead(targetRes.statusCode, {
+      ...targetRes.headers,
+      "access-control-allow-origin": "*",
+      "access-control-allow-headers": "*",
+      "access-control-allow-methods": "*",
+    });
+    targetRes.pipe(res);
+  });
+  proxy.on("error", () => {
+    res.writeHead(502);
+    res.end("Backend unreachable");
+  });
+  req.pipe(proxy);
+}
+
+function isGrpc(req) {
+  const ct = req.headers["content-type"] || "";
+  return (
+    ct.includes("grpc-web") ||
+    ct.includes("application/proto") ||
+    (req.url || "").startsWith("/arrow.flight.")
+  );
+}
+
+// ── Main proxy server ──
 createServer(async (req, res) => {
-  // ── Handle CORS preflight ──
+  // CORS preflight
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
@@ -84,7 +111,7 @@ createServer(async (req, res) => {
     return;
   }
 
-  // ── Login endpoint ──
+  // Login
   if (req.method === "POST" && req.url === "/login") {
     let body = "";
     req.on("data", (c) => (body += c));
@@ -92,7 +119,7 @@ createServer(async (req, res) => {
       const params = new URLSearchParams(body);
       if (params.get("password") === PASSWORD) {
         res.writeHead(302, {
-          Location: "/?token=" + encodeURIComponent(PASSWORD),
+          Location: "/",
           "Set-Cookie": "auth=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400",
         });
         res.end();
@@ -103,10 +130,10 @@ createServer(async (req, res) => {
     return;
   }
 
-  // ── Auth gate ──
+  // Auth gate
   if (!isAuthenticated(req)) {
-    const url = new URL(req.url || "/", `http://localhost:${PORT}`);
-    if (url.pathname === "/" || url.pathname === "/index.html") {
+    const url = req.url || "/";
+    if (url === "/" || url.startsWith("/?")) {
       serveLogin(res);
     } else {
       res.writeHead(401);
@@ -115,68 +142,19 @@ createServer(async (req, res) => {
     return;
   }
 
-  // ── Authenticated zone ──
-  const ct = req.headers["content-type"] || "";
-
-  // Proxy gRPC-web / Flight SQL requests to the Rust server
-  if (
-    ct.includes("grpc-web") ||
-    ct.includes("application/proto") ||
-    (req.url || "").startsWith("/arrow.flight.")
-  ) {
-    // Log the query request
+  // gRPC-web → Flight SQL
+  if (isGrpc(req)) {
+    // Log the query
     const ts = new Date().toISOString();
     const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "?";
     console.log(`[${ts}] query from ${ip}`);
-    const opts = {
-      hostname: "127.0.0.1",
-      port: FLIGHT_PORT,
-      path: req.url,
-      method: req.method,
-      headers: { ...req.headers, host: `127.0.0.1:${FLIGHT_PORT}` },
-    };
-    const proxy = request(opts, (flightRes) => {
-      res.writeHead(flightRes.statusCode, {
-        ...flightRes.headers,
-        "access-control-allow-origin": "*",
-        "access-control-allow-headers": "*",
-        "access-control-allow-methods": "*",
-      });
-      flightRes.pipe(res);
-    });
-    proxy.on("error", () => {
-      res.writeHead(502);
-      res.end("Flight SQL unreachable");
-    });
-    req.pipe(proxy);
+    proxyToTarget(FLIGHT_PORT, req, res);
     return;
   }
 
-  // Serve static files
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  let path = url.pathname === "/" ? "/index.html" : url.pathname;
-  const filePath = join(__dirname, path);
-
-  try {
-    const data = await readFile(filePath);
-    const ext = extname(filePath);
-    res.writeHead(200, {
-      "Content-Type": MIME[ext] || "application/octet-stream",
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "no-store",
-    });
-    res.end(data);
-  } catch {
-    // SPA fallback: serve index.html for client-side routes (/query, /view, /docs)
-    try {
-      const data = await readFile(join(__dirname, "index.html"));
-      res.writeHead(200, { "Content-Type": "text/html", "Access-Control-Allow-Origin": "*" });
-      res.end(data);
-    } catch {
-      res.writeHead(404);
-      res.end("404");
-    }
-  }
+  // Everything else → SvelteKit
+  proxyToTarget(SVELTE_PORT, req, res);
 }).listen(PORT, () => {
   console.log(`Serving on http://localhost:${PORT}  (password: ${PASSWORD})`);
+  console.log(`SvelteKit → :${SVELTE_PORT}  |  Flight SQL → :${FLIGHT_PORT}`);
 });
