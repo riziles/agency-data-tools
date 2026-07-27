@@ -11,7 +11,7 @@
   import perspective_viewer, { init_client } from '@finos/perspective-viewer';
   import '@finos/perspective-viewer-datagrid';
   import '@finos/perspective-viewer-d3fc';
-  import '@finos/perspective-viewer/dist/css/pro.css';
+  import '@finos/perspective-viewer/dist/css/themes.css';
 
   import SERVER_WASM from '@finos/perspective/dist/wasm/perspective-server.wasm?url';
   import CLIENT_WASM from '@finos/perspective-viewer/dist/wasm/perspective-viewer.wasm?url';
@@ -56,18 +56,26 @@
 
       const columns = result.table.schema.fields.map((f: any) => f.name);
       await viewer.load(table);
+      // Right-align numeric columns
+      const numCols = new Set(['loans', 'avg_upb', 'total', 'cnt', 'count', 'number_of_borrowers',
+        'original_upb', 'original_interest_rate', 'original_loan_term',
+        'borrower_credit_score_at_origination', 'co_borrower_credit_score_at_origination']);
+      const cfg: Record<string, any> = {};
+      for (const col of columns) {
+        if (numCols.has(col) || col.toLowerCase().includes('count') || col.toLowerCase().includes('upb')
+          || col.toLowerCase().includes('score') || col.toLowerCase().includes('rate')
+          || col.toLowerCase().includes('term') || col.toLowerCase().includes('loan')
+          || col.toLowerCase().includes('borrower') || col.toLowerCase().includes('number')) {
+          cfg[col] = { number_align: 'right', align: 'right' };
+        }
+      }
+
       await viewer.restore({
         plugin: 'Datagrid',
         theme: 'Pro Dark',
         settings: false,
         columns,
-        // Right-align numeric columns
-        columns_config: columns.reduce((acc, col) => {
-          if (col === 'loans' || col === 'avg_upb' || col === 'total' || col === 'cnt' || col === 'count') {
-            acc[col] = { number_align: 'right' as any };
-          }
-          return acc;
-        }, {} as Record<string, any>),
+        columns_config: cfg,
       });
     } catch (e: any) {
       error = e.message || String(e);
@@ -142,13 +150,5 @@
   :global(perspective-viewer) {
     --pivot-background: var(--bg);
     --plugin--background: var(--bg);
-    --column-header--color: #e2e8f0;
-    --column-header--background: #1a2332;
-    --row-header--color: #94a3b8;
-    --cell--color: #60a5fa;
-    --cell--border-color: rgba(255, 255, 255, 0.04);
-    --column-header--border-color: rgba(255, 255, 255, 0.06);
-    --cell--padding: 12px 14px;
-    font-size: 13px;
   }
 </style>
