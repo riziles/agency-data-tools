@@ -173,6 +173,10 @@ Copy `.env.example` to `.env` and fill in:
 | Response | `{ lphResponse: [{ s3Uri, year, quarter }] }` |
 | ZIP contents | Single pipe-delimited CSV, no header, 113 columns |
 
+## TODO
+
+- [ ] **Consolidate Node proxy into SvelteKit** — Replace `server.mjs` (gRPC-web proxy + auth + static serving) with SvelteKit `+server.ts` endpoints and `hooks.server.ts` auth. One process, one port, no static build step.
+
 ## License
 
 MIT
