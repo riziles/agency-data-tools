@@ -27,7 +27,7 @@ VOLUME /app/data
 RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8765 50051
-ENV APP_PASSWORD=demo
+# APP_PASSWORD default handled in docker-entrypoint.sh
 ENV TUNNEL=0
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
