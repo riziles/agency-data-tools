@@ -48,3 +48,5 @@ ginnie-ingest/target/
 ginnie_*.zip
 LoanPerf_*.txt
 LoanPerf_*.csv
+test-data/ginnie_*.parquet
+test-data/fannie_*.parquet

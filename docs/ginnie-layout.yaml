@@ -1,0 +1,419 @@
+# Ginnie Mae Loan Performance File Layout V1.0 (May 2023)
+# Source: LoanPerf_layout.pdf — pipe-delimited format
+# Record types: HH (header), LP (loan performance), TT (trailer)
+
+header:
+  - id: HH-01
+    name: record_type
+    type: character
+    length: 2
+    description: File Header Record, value = "HH"
+  - id: HH-02
+    name: report_period
+    type: numeric
+    length: 6
+    format: YYYYMM
+    description: Reporting Period of the data in the file (as-of month and year)
+  - id: HH-03
+    name: file_frequency
+    type: numeric
+    length: 1
+    description: 'Q = Quarterly file, A = Annual file'
+    values: [Q, A]
+  - id: HH-04
+    name: date_file_generated
+    type: numeric
+    length: 8
+    format: YYYYMMDD
+    description: The Date the file was created
+
+loans:
+  - id: LP-01
+    name: record_type
+    type: character
+    length: 2
+    description: Loan Performance Record, value = "LP"
+  - id: LP-02
+    name: cusip
+    type: character
+    length: 9
+    description: CUSIP identification number for the security
+  - id: LP-03
+    name: pool_id
+    type: character
+    length: 6
+    description: Pool identifier assigned by Ginnie Mae at pooling
+  - id: LP-04
+    name: pool_indicator
+    type: character
+    length: 1
+    description: Issue type of the pool
+    values: [X, C, M]
+  - id: LP-05
+    name: pool_type
+    type: character
+    length: 2
+    description: Two-character pool type (see Ginnie Mae Guide, Chapter 1)
+  - id: LP-06
+    name: pool_issue_date
+    type: numeric
+    length: 8
+    format: CCYYMMDD
+    description: The date the pool was issued
+  - id: LP-07
+    name: disclosure_seq_num
+    type: numeric
+    length: 10
+    description: A number used for each loan to identify it distinctly for data disclosures
+  - id: LP-08
+    name: issuer_id
+    type: numeric
+    length: 4
+    description: The four-digit identifier for the current issuer responsible for the loan
+  - id: LP-09
+    name: agency
+    type: character
+    length: 1
+    description: Identifier of the government agency
+    values:
+      F: Federal Housing Administration
+      V: Veterans Administration
+      R: Rural Development
+      N: Native American
+      9: Not Available
+  - id: LP-10
+    name: loan_purpose
+    type: numeric
+    length: 1
+    description: Purpose of the loan
+    values:
+      1: Purchase
+      2: Refinance
+      3: Loan Modification (HAMP)
+      4: Loan Modification (non-HAMP)
+      5: Re-Performing
+      9: Not Available
+  - id: LP-11
+    name: refinance_type
+    type: numeric
+    length: 1
+    description: Type of refinance (applies to Loan Purpose = 2 only)
+    values:
+      1: Not Streamlined, Not Cash Out
+      2: Cash Out
+      3: Streamlined
+  - id: LP-12
+    name: first_payment_date
+    type: numeric
+    length: 8
+    format: CCYYMMDD
+    description: The date in which the first monthly installment payment was due
+  - id: LP-13
+    name: maturity_date
+    type: numeric
+    length: 8
+    format: CCYYMMDD
+    description: The maturity date of this loan
+  - id: LP-14
+    name: interest_rate
+    type: numeric
+    length: 5
+    format: "3.2"
+    description: The interest rate of the loan
+  - id: LP-15
+    name: original_principal_balance
+    type: numeric
+    length: 15
+    format: "13.2"
+    description: The Original Principal Balance of the loan at pool issuance
+  - id: LP-16
+    name: upb_at_issuance
+    type: numeric
+    length: 15
+    format: "13.2"
+    description: UPB of the loan as of the reporting period (blank first 6 months)
+  - id: LP-17
+    name: unpaid_principal_balance
+    type: numeric
+    length: 15
+    format: "13.2"
+    description: Unscheduled remaining principal (blank first 6 months)
+  - id: LP-18
+    name: original_loan_term
+    type: numeric
+    length: 3
+    description: The calculated value of original term of the loan (months)
+  - id: LP-19
+    name: loan_age
+    type: numeric
+    length: 3
+    description: The calculated value of the age of the loan (months)
+  - id: LP-20
+    name: remaining_term
+    type: numeric
+    length: 3
+    description: The calculated value of Remaining Term of the Loan (months)
+  - id: LP-21
+    name: months_delinquent
+    type: numeric
+    length: 1
+    description: 'Number of months the loan is delinquent (1-6, where 6 = 6+)'
+  - id: LP-22
+    name: months_prepaid
+    type: numeric
+    length: 1
+    description: 'Number of months the loan is Pre-Paid (1-6, where 6 = 6+)'
+  - id: LP-23
+    name: gross_margin
+    type: numeric
+    length: 4
+    format: "1.3"
+    description: The rate on an ARM loan added to the index (ARM only)
+  - id: LP-24
+    name: ltv
+    type: numeric
+    length: 5
+    format: "3.2"
+    description: The Original Loan To Value (LTV) of the loan
+  - id: LP-25
+    name: cltv
+    type: numeric
+    length: 5
+    format: "3.2"
+    description: The Original Combined LTV (CLTV) of the loan
+  - id: LP-26
+    name: dti
+    type: numeric
+    length: 5
+    format: "3.2"
+    description: Total Debt Expense Ratio Percent
+  - id: LP-27
+    name: credit_score
+    type: numeric
+    length: 3
+    description: The credit score of the borrower
+  - id: LP-28
+    name: down_payment_assistance
+    type: character
+    length: 1
+    description: Indicator of whether the borrower received gift funds for the loan Down Payment
+    values: [Y, N]
+  - id: LP-29
+    name: buydown_status
+    type: character
+    length: 1
+    description: Buy Down Status of the loan
+    values: [Y, N]
+  - id: LP-30
+    name: upfront_mip
+    type: numeric
+    length: 5
+    format: "2.3"
+    description: The upfront mortgage insurance premium percentage rate (FHA loans)
+  - id: LP-31
+    name: annual_mip
+    type: numeric
+    length: 5
+    format: "2.3"
+    description: The annual mortgage insurance premium percentage rate (FHA loans)
+  - id: LP-32
+    name: num_borrowers
+    type: numeric
+    length: 1
+    description: Number of Borrowers on the loan
+  - id: LP-33
+    name: first_time_buyer
+    type: character
+    length: 1
+    description: Indicator for purchase loans of whether borrower qualifies as a First Time Home Buyer
+    values: [Y, N]
+  - id: LP-34
+    name: num_units
+    type: numeric
+    length: 1
+    description: Number of Living Units of the property
+  - id: LP-35
+    name: property_state
+    type: character
+    length: 2
+    description: 2-character State Code
+  - id: LP-36
+    name: msa
+    type: numeric
+    length: 5
+    description: Code for the Metropolitan Statistical Area
+  - id: LP-37
+    name: third_party_origination
+    type: numeric
+    length: 1
+    description: Identifies the type of third party that originated the loan
+    values:
+      1: Broker
+      2: Correspondent
+      3: Retail
+  - id: LP-38
+    name: liquidation_flag
+    type: character
+    length: 1
+    description: Indicator of whether the given loan was liquidated in this reporting month
+    values: [Y, N]
+  - id: LP-39
+    name: removal_reason
+    type: numeric
+    length: 1
+    description: Reason for removal of the loan
+    values:
+      1: Mortgagor Payoff
+      2: Repurchase of Delinquent Loan
+      3: Foreclosure with Claim Payment
+      4: Loss Mitigation
+      5: Substitution
+      6: Other Removal
+  - id: LP-40
+    name: as_of_date
+    type: numeric
+    length: 6
+    format: CCYYMM
+    description: Reporting period for the data
+  - id: LP-41
+    name: origination_date
+    type: numeric
+    length: 8
+    format: CCYYMMDD
+    description: The date of loan origination
+  - id: LP-42
+    name: seller_issuer_id
+    type: numeric
+    length: 4
+    description: The four digit identifier for the Issuer selling the pool
+  - id: LP-43
+    name: index_type
+    type: character
+    length: 5
+    description: The type of ARM index being used for the ARM loan
+    values: [CMT, LIBOR]
+  - id: LP-44
+    name: lookback_period
+    type: numeric
+    length: 2
+    description: Two-digit time period used for ARM index look-back
+    values:
+      30: 30-day look back
+      45: 45-day look back
+  - id: LP-45
+    name: rate_change_date
+    type: numeric
+    length: 8
+    format: CCYYMMDD
+    description: Date of the next interest rate change for the loan in an ARM pool
+  - id: LP-46
+    name: initial_rate_cap
+    type: numeric
+    length: 1
+    description: Maximum interest rate change amount (+/-) for the initial rate change (ARM)
+  - id: LP-47
+    name: subsequent_rate_cap
+    type: numeric
+    length: 1
+    description: Maximum interest rate change amount (+/-) for annual changes after initial (ARM)
+  - id: LP-48
+    name: lifetime_rate_cap
+    type: numeric
+    length: 1
+    description: Maximum interest rate change amount (+/-) over the life of the loan (ARM)
+  - id: LP-49
+    name: next_rate_ceiling
+    type: numeric
+    length: 5
+    format: "3.2"
+    description: Maximum interest rate the loan can have for upcoming change (ARM)
+  - id: LP-50
+    name: lifetime_rate_ceiling
+    type: numeric
+    length: 5
+    format: "3.2"
+    description: Maximum interest rate the loan can have for the life of the loan (ARM)
+  - id: LP-51
+    name: lifetime_rate_floor
+    type: numeric
+    length: 5
+    format: "3.2"
+    description: Minimum interest rate the loan can have for the life of the loan (ARM)
+  - id: LP-52
+    name: prospective_rate
+    type: numeric
+    length: 5
+    format: "3.2"
+    description: Not currently disclosed — future use
+  - id: LP-53
+    name: liquidation_balance
+    type: numeric
+    length: 16
+    format: "13.2"
+    description: Unscheduled remaining principal being passed through (blank first 6 months)
+  - id: LP-54
+    name: forbearance_months
+    type: character
+    length: 2
+    description: Number of months forbearance (blank if not available)
+  - id: LP-55
+    name: covid_flag
+    type: character
+    length: 1
+    description: COVID-related forbearance indicator
+    values:
+      Y: COVID related
+      N: Other type of forbearance not COVID related
+      U: Unknown
+  - id: LP-56
+    name: forbearance_begin_date
+    type: numeric
+    length: 8
+    format: CCYYMMDD
+    description: Scheduled installment that the forbearance begins (blank if not available)
+  - id: LP-57
+    name: forbearance_end_date
+    type: numeric
+    length: 8
+    format: CCYYMMDD
+    description: Scheduled installment that the forbearance ends (blank if not available)
+  - id: LP-58
+    name: forbearance_exit_code
+    type: character
+    length: 1
+    description: Forbearance exit resolution type
+    values:
+      1: Lump Sum Repayment Plan
+      2: Installment Repayment Plan
+      3: Partial Claim or Deferral
+      4: Loan Mod / Loss Mitigation / Combo
+      5: Loan Paid Off
+      6: No Workout / No Loss Mitigation
+      7: Other Type of Workout Plan
+      8: Unavailable
+      9: Cancelled / Loan Remained Current
+      U: Status Unknown for the Period
+      N: Not exiting forbearance this reporting period
+  - id: LP-59
+    name: delinquency_history
+    type: character
+    length: 48
+    description: 'Up to 24 periods of payment history (2 chars each). Values: 00 = Current, 01-99 = months delinquent, XX = Not Available'
+
+trailer:
+  - id: TT-01
+    name: record_type
+    type: character
+    length: 2
+    description: File Trailer Record, value = "TT"
+  - id: TT-02
+    name: report_period
+    type: numeric
+    length: 6
+    format: YYYYMM
+    description: Reporting Period of the data in the file
+  - id: TT-03
+    name: loan_count
+    type: numeric
+    length: 9
+    description: Number of loans/LP Records in the file (excludes HH and TT records)
