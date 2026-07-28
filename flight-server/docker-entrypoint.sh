@@ -5,7 +5,7 @@ echo "=== Fannie Mae Flight SQL ==="
 
 # ── Start Flight SQL server ──
 echo "[1/2] Starting Flight SQL on :50051..."
-/app/flight-sql-server --data-dir /app/data &
+/app/flight-sql-server --data-dir /app/data --bind 0.0.0.0:50051 &
 FLIGHT_PID=$!
 
 # Wait until Flight SQL is accepting connections
@@ -28,7 +28,7 @@ PROXY_PID=$!
 # ── Optional Cloudflare Tunnel ──
 if [ "${TUNNEL}" = "1" ]; then
   echo "[+] Starting Cloudflare Tunnel..."
-  cloudflared tunnel --url http://localhost:8765 &
+  cloudflared tunnel --url http://localhost:8765 --url http://localhost:50051 &
   TUNNEL_PID=$!
 fi
 

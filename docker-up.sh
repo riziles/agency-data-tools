@@ -63,6 +63,7 @@ docker rm -f fannie-flight 2>/dev/null || true
 
 docker run -d --name fannie-flight \
   -p 8765:8765 \
+  -p 50051:50051 \
   -v "$DATA_DIR:/app/data" \
   -e APP_PASSWORD="$PASSWORD" \
   -e TUNNEL="$TUNNEL" \
@@ -70,7 +71,7 @@ docker run -d --name fannie-flight \
 
 sleep 3
 echo ""
-echo "Ready: http://localhost:8765"
+echo "Ready: http://localhost:8765  (gRPC: localhost:50051)"
 docker logs fannie-flight 2>&1 | grep -E "Serving|Tunnel|snapshot" || true
 
 # ── Dev server (optional) ──

@@ -179,7 +179,7 @@ Copy `.env.example` to `.env` and fill in:
 - [x] **Consolidate Node proxy into SvelteKit** — `server.mjs` wraps SvelteKit handler (adapter-node) alongside gRPC-web proxy. One Docker container, one port.
 - [ ] **Fix docs page URLs** — Connection examples hardcode `http://localhost:8765`. Replace with relative/generic references so they make sense when accessed via Cloudflare Tunnel.
 - [ ] **Permanent Cloudflare Tunnel URL** — Ephemeral `*.trycloudflare.com` quick tunnels rotate on restart. Free tier option: named tunnel + Cloudflare-owned domain gives stable subdomain (`fannie-mae.example.com`). Requires Cloudflare account + domain in your account.
-- [ ] **Expose Flight SQL (:50051) remotely** — Python/ADBC clients need native gRPC access. Options: proxy native gRPC through `:8765` alongside gRPC-web (auth included), or publish `:50051` through a second tunnel (bypasses auth — would need mTLS or token middleware).
+- [x] **Expose Flight SQL (:50051) remotely** — Published from Docker, tunneled alongside :8765. Python/ADBC clients connect directly, guard-rails prevent abuse.
 
 ## License
 
