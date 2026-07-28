@@ -32,7 +32,7 @@ function serveLogin(res, error) {
     ? `<p style="color:#f44336;margin-bottom:1rem">${error}</p>`
     : "";
   res.writeHead(error ? 401 : 200, { "Content-Type": "text/html" });
-  res.end(`<!DOCTYPE html>
+  res.end(/* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
