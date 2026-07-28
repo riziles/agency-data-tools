@@ -28,14 +28,19 @@ PROXY_PID=$!
 # ── Optional Cloudflare Tunnel ──
 if [ "${TUNNEL}" = "1" ]; then
   echo "[+] Starting Cloudflare Tunnel..."
-  cloudflared tunnel --url http://localhost:8765 > /tmp/tunnel.log 2>&1 &
+  cloudflared tunnel --url http://localhost:8765 > /tmp/tunnel-web.log 2>&1 &
   TUNNEL_PID=$!
 
-  # Poll for the URL (cloudflared prints it with box-drawing chars that get stripped)
+  # Separate tunnel for native gRPC (Python/ADBC) — gets its own URL
+  cloudflared tunnel --url http://localhost:50051 > /tmp/tunnel-grpc.log 2>&1 &
+
+  # Poll for the web URL
   TUNNEL_URL=""
+  TUNNEL_GRPC=""
   for i in $(seq 1 30); do
-    TUNNEL_URL=$(grep -oP 'https://[^.]*\.trycloudflare\.com' /tmp/tunnel.log 2>/dev/null | head -1)
-    if [ -n "$TUNNEL_URL" ]; then break; fi
+    TUNNEL_URL=$(grep -oP 'https://[^.]*\.trycloudflare\.com' /tmp/tunnel-web.log 2>/dev/null | head -1)
+    TUNNEL_GRPC=$(grep -oP 'https://[^.]*\.trycloudflare\.com' /tmp/tunnel-grpc.log 2>/dev/null | head -1)
+    if [ -n "$TUNNEL_URL" ] && [ -n "$TUNNEL_GRPC" ]; then break; fi
     sleep 0.5
   done
 fi
@@ -45,8 +50,12 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  App:     http://localhost:8765"
 echo "  Auth:    password = ${APP_PASSWORD}"
 if [ -n "${TUNNEL_URL:-}" ]; then
-  echo "  Tunnel:  $TUNNEL_URL"
-elif [ "${TUNNEL}" = "1" ]; then
+  echo "  Web:     $TUNNEL_URL"
+fi
+if [ -n "${TUNNEL_GRPC:-}" ]; then
+  echo "  gRPC:    $TUNNEL_GRPC  (Python/ADBC)"
+fi
+if [ -z "${TUNNEL_URL:-}" ] && [ "${TUNNEL}" = "1" ]; then
   echo "  Tunnel:  starting (check docker logs)"
 fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
