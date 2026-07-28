@@ -28,7 +28,7 @@ PROXY_PID=$!
 # ── Optional Cloudflare Tunnel ──
 if [ "${TUNNEL}" = "1" ]; then
   echo "[+] Starting Cloudflare Tunnel..."
-  cloudflared tunnel --url http://localhost:8765 --url http://localhost:50051 > /tmp/tunnel.log 2>&1 &
+  cloudflared tunnel --url http://localhost:8765 > /tmp/tunnel.log 2>&1 &
   TUNNEL_PID=$!
 
   # Poll for the URL (cloudflared prints it with box-drawing chars that get stripped)
