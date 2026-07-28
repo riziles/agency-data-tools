@@ -43,3 +43,8 @@ dashboard/build
 wasm-query/pkg/
 test-results/
 playwright-report/
+secrets/ginnie-cookies.txt
+ginnie-ingest/target/
+ginnie_*.zip
+LoanPerf_*.txt
+LoanPerf_*.csv

@@ -1,0 +1,13 @@
+[package]
+name = "ginnie-ingest"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+datafusion = { version = "54", features = ["parquet"] }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+csv = "1"

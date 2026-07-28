@@ -1,0 +1,839 @@
+Loan Performance File
+Version 1.0
+See Version History for details
+
+Introduction:
+The purpose of this file is to provide MBS Loan Level data users with a comprehensive set of MBS loan level, loan liquidation, loan forbearance, and
+loan delinquency history disclosure data in one data disclosure file. This file compiles the data for active loans into one file, presented 3 months at
+a time. For example, a 202212 quarterly Loan Performance file will provide MBS loan level, loan liquidation, loan delinquency history and
+forbearance disclosure data for active loans in the 202210, 202211, and 202212 reporting periods. Additionally, on an annual basis, the Loan
+Performance file will provide 12 months of Loan Performance data in one file, using the same file layout as the quarterly file. The format of the file
+will be pipe bar delimited “|”.
+Implementation: The first quarterly file is “LoanPerf_202306.zip” with data from April-June 2023. The first annual file is
+“LoanPerfAnn_202312.zip” with data from April-December 2023.
+
+Document Version
+Version 1.0
+
+Loan Performance File, V 1.0
+
+History
+5/1/2023 Initial Version
+
+5/1/2023
+1
+
+Record Type
+HH
+LP
+
+Short Description
+Overall File Header Record
+Loan Performance Record
+
+TT
+
+Overall File Trailer Record
+
+Item
+HH-01
+HH-02
+
+Data Element
+Record Type = HH
+Report Period
+
+Type
+Character
+Numeric
+
+Max Length
+2
+
+Format
+
+6
+
+YYYYMM
+
+HH-03
+
+File Frequency
+
+Numeric
+
+1
+
+HH-04
+
+Date File Generated
+
+Numeric
+
+8
+
+Item
+LP-01
+LP-02
+
+Data Element
+Record Type = LP
+CUSIP Number
+
+Type
+Max Length
+Character
+2
+Character
+9
+
+LP-03
+LP-04
+
+Pool ID
+Pool Indicator
+
+Character
+Character
+
+6
+1
+
+LP-05
+
+Pool Type
+
+Character
+
+2
+
+Loan Performance File, V 1.0
+
+YYYYMMDD
+Format
+
+Occurs in the File
+One Record Per File
+One Record Per Active Loan Per Period (up to
+3 for a quarterly file and up to 12 for annual)
+One Record Per File
+Definition
+File Header Record
+Reporting Period of the data in the file (the “as of”
+month and year)
+The quarterly or annual indicator. Values are:
+Q = Quarterly file
+A = Annual file
+The Date the file was created
+Definition
+Loan Performance Record
+The CUSIP is a unique identification number
+permanently assigned by the Committee on Uniform
+Securities Identification Procedures (CUSIP) to each
+publicly traded security at the time of issuance.
+The Pool identifier assigned by Ginnie Mae at pooling.
+Identifies the Issue Type of the pool. Values are X, C, or
+M
+Two-character pool type for the pool (see Ginnie Mae
+Guide, Chapter 1)
+
+5/1/2023
+2
+
+LP-06
+LP-07
+
+Pool Issue Date
+Disclosure Sequence Number
+
+LP-08
+
+Issuer ID (including for loan
+packages in MIP pool)
+Agency (Agency Loan Type
+FHA, VA, RD, NA)
+
+LP-09
+
+LP-10
+
+LP-11
+
+LP-12
+
+LP-13
+LP-14
+
+Numeric
+Numeric
+
+8
+10
+
+Numeric
+
+4
+
+Character
+
+1
+
+Numeric
+
+1
+
+Numeric
+
+1
+
+YYYYMMDD
+
+Loan Purpose
+
+Refinance Type
+
+First Payment Date (First
+Scheduled Installment)
+Maturity Date of Loan (Last
+Scheduled Installment)
+Loan Interest Rate (current
+interest rate)
+
+Loan Performance File, V 1.0
+
+CCYYMMDD
+Numeric
+
+8
+
+Numeric
+
+8
+
+Numeric
+
+5
+
+CCYYMMDD
+3.2
+
+The date the pool was issued
+A number used for each loan to identify it distinctly for
+data disclosures
+The four-digit identifier for the current issuer
+responsible for the loan
+Identifier of the government agency. Values are:
+F = Federal Housing Administration
+V = Veterans Administration
+R = Rural Development
+N = Native American
+9 = Not Available
+Purpose of the loan. Values are:
+1 = Purchase
+2 = Refinance
+3 = Loan Modification (HAMP)
+4 = Loan Modification (non-HAMP)
+5 = Re-Performing
+9 = Not Available
+The type of refinance of the loan. Applies to Loan
+Purpose = 2 loans only. Values are:
+1 = Not Streamlined, Not Cash Out
+2 = Cash Out
+3 = Streamlined
+The date in which the first monthly installment
+payment was due in accordance with the
+mortgage/note.
+The maturity date of this loan in accordance with
+mortgage/note.
+The interest rate of the loan.
+
+5/1/2023
+3
+
+LP-15
+
+LP-16
+
+LP-17
+
+LP-18
+LP-19
+LP-20
+
+LP-21
+
+LP-22
+
+LP-23
+LP-24
+LP-25
+LP-26
+
+Original Principal Balance (OPB
+at pool issuance)
+UPB at Issuance (UPB of the
+loan at pool issuance)
+
+13.2
+Numeric
+
+15
+13.2
+
+Numeric
+
+15
+
+Unpaid Principal Balance (UPB
+of the loan)
+
+Original Loan Term, in Months
+Loan Age, in Months
+Remaining Loan Term
+(Remaining Maturity), in
+Months
+Months Delinquent (1,2,3,4,5,6
+where 6 means 6+ Scheduled
+installments due but not paid)
+Months Pre-Paid (1,2,3,4,5,6
+where 6 means 6+ Future
+scheduled installments have
+been paid)
+Loan Gross Margin (ARM Loans
+only)
+Loan To Value (LTV)
+Combined LTV (CLTV)
+Total Debt Expense Ratio
+Percent
+
+Loan Performance File, V 1.0
+
+13.2
+Numeric
+
+15
+
+Numeric
+Numeric
+
+3
+3
+
+Numeric
+
+3
+
+Numeric
+
+1
+
+The Original Principal Balance of the loan at pool
+issuance. The value is truncated to the thousandths
+place.
+The Unpaid Principal Balance (UPB) of the loan as of
+the reporting period. This field will be blank if the loan
+is removed within 6 months of pool issuance.
+The unscheduled remaining principal of the loan as of
+the reporting period. The disclosed value for this field
+will be blank for the first six months that a loan is in a
+pool. Disclosure for this field will begin it the seventh
+month.
+The calculated value of original term of the loan.
+The calculated value of the age of the loan.
+The calculated value of Remaining Term of the Loan.
+
+The number of months the loan is delinquent.
+
+The number of months the loan is Pre-Paid.
+Numeric
+
+1
+
+Numeric
+
+4
+
+Numeric
+Numeric
+
+5
+5
+
+Numeric
+
+5
+
+1.3
+3.2
+3.2
+3.2
+
+The rate on an ARM loan added to the index to reach
+the new mortgage interest rate.
+The Original Loan To Value (LTV) of the loan.
+The Original Combined LTV (CLTV) of the loan.
+The ratio of all debts of the borrowers to the
+borrower’s qualifying income as defined by the
+mortgage insurer or guarantor.
+
+5/1/2023
+4
+
+LP-27
+LP-28
+LP-29
+LP-30
+LP-31
+LP-32
+LP-33
+
+LP-34
+LP-35
+LP-36
+
+LP-37
+
+Credit Score
+Down Payment Assistance (Yes
+or No)
+Buy Down Status (Loan Status)
+(Yes or No)
+Upfront MIP (insurance
+premium rate)
+Annual MIP (insurance
+premium rate)
+Number of Borrowers
+First Time Home Buyer (Yes or
+No)
+
+Property Type (Number of
+Living Units)
+State (2 character State Code)
+MSA
+
+Numeric
+
+3
+
+Character
+
+1
+
+Character
+
+1
+
+Numeric
+
+5
+
+Numeric
+
+5
+
+Numeric
+
+1
+
+Character
+
+1
+
+Numeric
+
+1
+
+Character
+
+2
+
+Numeric
+
+5
+
+Numeric
+
+1
+
+Character
+
+1
+
+Third-Party Origination Type
+
+LP-38
+Current Month Liquidation Flag
+(Yes or No)
+
+Loan Performance File, V 1.0
+
+The credit score of the borrower.
+An indicator of whether the borrower received gift
+funds for the loan Down Payment.
+Buy Down Status of the loan.
+2.3
+2.3
+
+The upfront mortgage insurance premium percentage
+rate that institutions charge to insure FHA loans.
+The annual mortgage insurance premium percentage
+rate that institutions charge to insure FHA loans.
+Number of Borrowers on the loan.
+An indicator for purchase loans of whether the
+borrower qualifies as a First Time Home Buyer.
+Values are:
+Y = Yes
+N = No
+Number of Living Units of the property.
+The 2-character State Code
+Code for the Metropolitan Statistical Area or
+Micropolitan Statistical Area where the property is
+located. Value is derived from the Census tract
+associated with the borrower address.
+Identifies the type of third party that originated the
+loan. Values are:
+1 = Broker
+2 = Correspondent
+3 = Retail
+An indicator of whether the given loan was liquidated
+in this reporting month. Values are:
+Y = Yes
+
+5/1/2023
+5
+
+LP-39
+
+LP-40
+LP-41
+LP-42
+LP-43
+
+LP-44
+
+Removal Reason
+As of Date
+Loan Origination Date
+Seller Issuer ID
+Index Type
+
+1
+
+Numeric
+Numeric
+Numeric
+
+6
+8
+4
+
+Character
+
+5
+
+Numeric
+
+2
+
+Numeric
+
+8
+
+Numeric
+
+1
+
+Numeric
+
+1
+
+Look-Back Period
+
+LP-45
+
+Interest Rate Change Date
+
+LP-46
+
+Initial Interest Rate Cap
+
+LP-47
+
+Numeric
+
+Subsequent Interest Rate Cap
+
+Loan Performance File, V 1.0
+
+CCYYMM
+CCYYMMDD
+
+N = No
+Reason for removal of the loan. Values are:
+1 = Mortgagor Payoff
+2 = Repurchase of Delinquent Loan
+3 = Foreclosure with Claim Payment
+4 = Loss Mitigation
+5 = Substitution
+6 = Other Removal
+Reporting period for the data.
+The date of loan origination.
+The four digit identifier for the Issuer selling the pool.
+The type of ARM index being used for the ARM loan.
+Values are:
+CMT = for Constant Maturity Treasury
+LIBOR = for London Interbank Offered Rate
+The two-digit time period used to establish a specific
+point in time for the particular ARM Index that will be
+used to determine the interest rate change. (Used in
+conjunction with the published index tables. See
+Ginnie Mae MBS Guide Chapter 26). This applies to
+loans in ARM Pools only.
+Values are:
+“30” = 30-day look back
+“45” = 45-day look back
+The date of the next interest rate change for the loan
+in an ARM pool, i.e. the date the interest rate changes.
+The maximum interest rate change amount (+/-) for
+the loan in an ARM pool, applicable only to the initial
+interest rate change.
+The maximum interest rate change amount (+/-) for
+
+5/1/2023
+6
+
+LP-48
+
+Lifetime Interest Rate Cap
+
+LP-49
+
+Next Interest Rate Change
+Ceiling
+
+LP-50
+
+LP-51
+
+LP-52
+
+Numeric
+
+1
+
+Numeric
+
+5
+
+Numeric
+
+5
+
+Numeric
+
+5
+
+Numeric
+
+5
+
+Numeric
+
+16
+
+Character
+
+2
+
+Lifetime Interest Rate Ceiling
+
+Lifetime Interest Rate Floor
+
+Prospective Interest Rate
+
+LP-53
+
+Liquidation Balance (principal
+pass through)
+
+LP-54
+
+Number of Months
+Forbearance (Term)
+
+Loan Performance File, V 1.0
+
+the loan in an ARM pool for each of the annual rate
+changes following the initial period. The Cap is
+constant for each annual change and is applied to the
+current interest rate (not the initial interest rate).
+The maximum interest rate change amount (+/-) of the
+loan in an ARM pool over the life of the loan.
+The maximum interest rate that the loan in an ARM
+pool can have for each interest rate change. This field
+will have the initial rate change ceiling during the
+initial period. After this and during each annual change
+period this field will have the ceiling for each
+respective annual change. The value in this field can
+change for each adjustment period.
+The maximum interest rate that the loan in an ARM
+pool can have for the life of the loan. This is a constant
+value for the loan and does not change over the life of
+the loan.
+The minimum interest rate that the loan in an ARM
+pool can have for the life of the loan. This is a constant
+value for the loan and does not change over the life of
+the loan.
+This data element is currently not disclosed. Ginnie
+Mae will be collecting and disclosing this field in the
+future.
+The unscheduled remaining principal of the loan that
+is being passed through, after taking into account
+scheduled principal remitted. This field will be blank if
+the loan is removed within 6 months of pool issuance.
+The number of months forbearance (the forbearance
+term) based on scheduled installments, as reported by
+the issuer. This field will be blank if not available.
+
+5/1/2023
+7
+
+LP-55
+
+LP-56
+
+LP-57
+
+LP-58
+
+LP-59
+
+COVID Flag
+
+Character
+
+1
+
+Numeric
+
+8
+
+Numeric
+
+8
+
+Character
+
+1
+
+Character
+
+48
+
+Begin Date
+
+CCYYMMDD
+
+End Date
+
+CCYYMMDD
+
+Forbearance “Exit” Code
+
+Months Delinquent (up to
+previous 24 months)
+
+Loan Performance File, V 1.0
+
+Values are:
+Y = COVID related
+N = Other type of forbearance not COVID related
+U = Unknown.
+Ginnie Mae issuers report all active forbearances and
+to the extent available a flag indicating that the
+forbearance is specific to COVID circumstances or not.
+Will be “U” if not available.
+The scheduled installment (per the loan’s amortization
+schedule), that the forbearance begins. Will be blank if
+not available.
+The scheduled installment (per the loan’s amortization
+schedule), that the forbearance ends. Will be blank if
+not available.
+Values are:
+1 = Lump Sum Repayment Plan
+2 = Installment Repayment Plan
+3 = Partial Claim or Deferral
+4 = Loan Mod/Loss Mitigation/Combo
+5 = Loan Paid Off
+6 = No Workout/No Loss Mitigation
+7 = Other Type of Workout Plan
+8 = Unavailable: This is used where there is a
+Forbearance Exit, but no code was available
+9 = Cancelled; Loan Remained Current
+U = Status Unknown for the Period. There is nothing to
+disclose.
+N = The loan is not exiting forbearance this reporting
+period.
+This is a single field with up to 24 occurrences of
+Payment History (a maximum of 48: 2 characters of 24
+
+5/1/2023
+8
+
+periods).
+Values in Months Delinquent are:
+00 – Current
+01 – 1 Month Delinquent
+02 – 2 Months Delinquent
+03 – 3 Months Delinquent
+….
+99 – 99 or more Months Delinquent
+XX – Data is Not Available for a Period
+For loans with less than 24 months of history, the field
+will end after the final month of delinquency data.
+Item
+TT-01
+TT-02
+TT-03
+
+Data Element
+Record Type = TT
+Report Period
+Loan Count
+
+Type
+Character
+Numeric
+Numeric
+
+Max Length
+2
+6
+9
+
+Format
+YYYYMM
+
+Definition
+File Trailer Record
+Reporting Period of the data in the file
+The number of loans/LP Records contained in the
+file. This count does not include the “HH” or “TT”
+records.
+
+Loan Performance File Layout Notes:
+•
+•
+
+This layout applies to active Single Family loans only.
+Loan Performance File Naming Convention:
+o Quarterly Files: “LoanPerf_YYYYMM.zip”, where “YYYY” is the four-year digit year and “MM” is the month of month 3 in the quarter.
+o Annual Files: “LoanPerfAnn_YYYYMM.zip”, where “YYYY” is the four-year digit year and “MM” is the month of the final month in the
+calendar year.
+
+Loan Performance File, V 1.0
+
+5/1/2023
+9
+
+
