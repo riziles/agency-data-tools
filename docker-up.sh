@@ -72,7 +72,9 @@ docker run -d --name fannie-flight \
 sleep 3
 echo ""
 echo "Ready: http://localhost:8765  (gRPC: localhost:50051)"
-docker logs fannie-flight 2>&1 | grep -E "Serving|Tunnel|snapshot" || true
+# Wait a bit for tunnel URL to appear in logs
+if [ "$TUNNEL" = "1" ]; then sleep 10; fi
+docker logs fannie-flight 2>&1 | grep -E "Serving|Tunnel:|snapshot" || true
 
 # ── Dev server (optional) ──
 if [ "$DEV" = "1" ]; then
