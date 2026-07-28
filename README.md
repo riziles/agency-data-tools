@@ -177,7 +177,7 @@ Copy `.env.example` to `.env` and fill in:
 
 - [ ] **Save queries** — After SvelteKit consolidation: server-side SQLite CRUD with prepared statements, or localStorage for zero-server version.
 - [x] **Consolidate Node proxy into SvelteKit** — `server.mjs` wraps SvelteKit handler (adapter-node) alongside gRPC-web proxy. One Docker container, one port.
-- [ ] **Fix docs page URLs** — Connection examples hardcode `http://localhost:8765`. Replace with relative/generic references so they make sense when accessed via Cloudflare Tunnel.
+- [x] **Fix docs page URLs** — Connection examples use `endpoint: '/'` (same-origin) instead of hardcoded `localhost:8765`.
 - [ ] **Permanent Cloudflare Tunnel URL** — Ephemeral `*.trycloudflare.com` quick tunnels rotate on restart. Free tier option: named tunnel + Cloudflare-owned domain gives stable subdomain (`fannie-mae.example.com`). Requires Cloudflare account + domain in your account.
 - [x] **Expose Flight SQL (:50051) remotely** — Published from Docker, tunneled alongside :8765. Python/ADBC clients connect directly, guard-rails prevent abuse.
 
