@@ -20,6 +20,10 @@ struct Args {
     #[arg(long)]
     parquet: PathBuf,
 
+    /// Table name in DuckLake (default: loans)
+    #[arg(long, default_value = "loans")]
+    table: String,
+
     /// Rows per DuckLake file (smaller = less memory, more files)
     #[arg(long, default_value = "500000")]
     chunk_size: usize,
@@ -59,6 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Read parquet with DataFusion — parquet reading is columnar, not memory-heavy
     let ctx = SessionContext::new();
+    let table_name = args.table.clone();
     ctx.register_parquet(
         "source",
         args.parquet.to_str().unwrap(),
@@ -91,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::process::exit(1);
             }
             let result = table_writer
-                .append_table("main", "loans", &chunk_batches)
+                .append_table("main", &table_name, &chunk_batches)
                 .await?;
             files_written += result.files_written;
             last_snapshot = result.snapshot_id;
@@ -107,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Write remaining
     if !chunk_batches.is_empty() {
         let result = table_writer
-            .append_table("main", "loans", &chunk_batches)
+            .append_table("main", &table_name, &chunk_batches)
             .await?;
         files_written += result.files_written;
         last_snapshot = result.snapshot_id;
