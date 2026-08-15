@@ -34,10 +34,11 @@ Thumbs.db
 *.csv
 !test-data/*.csv
 *.parquet
-!test-data/sample.parquet
 
 # Runtime artifacts
 flight-server/data/.lock
+flight-server/dashboard/
+.tmp/
 /query/
 dashboard/build
 wasm-query/pkg/
